@@ -1,5 +1,6 @@
 AddCSLuaFile("cl_init.lua")
 AddCSLuaFile("shared.lua")
+AddCSLuaFile("libs/imgui.lua")
 
 include("shared.lua")
 
