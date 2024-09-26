@@ -55,5 +55,3 @@ net.Receive("TransferMoney",function(length,client)
 	playerData[client:AccountID()] = {Bank = client:GetNWInt("BankMoney"), Wallet = client:GetNWInt("Money")}
 	SaveDataToFile(playerData)
 end)
-
-print("Server")
