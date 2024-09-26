@@ -3,25 +3,34 @@ AddCSLuaFile("autorun/sh_money.lua")
 
 include("autorun/sh_money.lua")
 
-hook.Add( "PlayerInitialSpawn","moneyaddon-on-join",function(client)
-	client:SetNWInt("Money",100)
-	client:SetNWInt("BankMoney",0)
+local DATA_FILE = "moneySaveData.txt"
 
-	-- Load sava data if there, otherwise create it
-	if not file.Exists("moneySaveData.txt", "DATA") then
-		file.Write("moneySaveData.txt", "") -- Create file
+function LoadDataFromFile()
+	-- Create the data file if it doesn't exist
+	if not file.Exists(DATA_FILE, "DATA") then
+		file.Write(DATA_FILE, "")
 	end
 
-	local content = file.Read("moneySaveData.txt", "DATA") -- read saved data
-	local data = util.JSONToTable(content or "") or {} -- json decode it, default to empty table
-	
-	if data[client:AccountID()] then -- if the player has data, load it
+	local content = file.Read(DATA_FILE, "DATA") -- read saved data
+	return util.JSONToTable(content or "") or {} -- json decode it, default to empty table
+end
+
+function SaveDataToFile(data)
+	local content = util.TableToJSON(data) -- json encode it
+	file.Write(DATA_FILE, content) -- write to file
+end
+
+local playerData = LoadDataFromFile()
+
+hook.Add( "PlayerInitialSpawn","moneyaddon-on-join",function(client)
+	if playerData[client:AccountID()] then -- if the player has data, load it
 		client:SetNWInt("BankMoney",data[client:AccountID()].Bank)
 		client:SetNWInt("Money",data[client:AccountID()].Wallet)
 	else -- otherwise create and save data for them
-		data[client:AccountID()] = {Bank = 0, Wallet = 100}
-		local json = util.TableToJSON(data)
-		file.Write("moneySaveData.txt",json)
+		client:SetNWInt("Money",100)
+		client:SetNWInt("BankMoney",0)
+		playerData[client:AccountID()] = {Bank = 0, Wallet = 100}
+		SaveDataToFile(playerData)
 	end
 end)
 
@@ -43,11 +52,8 @@ net.Receive("TransferMoney",function(length,client)
 	-- viola
 
 	-- Update save file
-	local content = file.Read("moneySaveData.txt", "THIRDPARTY") -- read saved data
-	local data = util.JSONToTable(content or "") or {} -- json decode it, default to empty table
-	data[client:AccountID()] = {Bank = client:GetNWInt("BankMoney"), Wallet = client:GetNWInt("Money")}
-	local json = util.TableToJSON(data)
-	file.Write("moneySaveData.txt",json)
+	playerData[client:AccountID()] = {Bank = client:GetNWInt("BankMoney"), Wallet = client:GetNWInt("Money")}
+	SaveDataToFile(playerData)
 end)
 
 print("Server")
