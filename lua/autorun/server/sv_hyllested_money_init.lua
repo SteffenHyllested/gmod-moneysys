@@ -1,7 +1,4 @@
-AddCSLuaFile("autorun/client/cl_money.lua")
-AddCSLuaFile("autorun/sh_money.lua")
-
-include("autorun/sh_money.lua")
+AddCSLuaFile("autorun/client/cl_hyllested_money_init.lua")
 
 local DATA_FILE = "moneySaveData.txt"
 
