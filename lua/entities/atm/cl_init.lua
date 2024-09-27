@@ -53,12 +53,10 @@ function ENT:DrawTranslucent()
                 end
 
                 if transferRate ~= 0 then
-                    coroutine.wrap(function()
-                        net.Start("TransferMoney")
-                            net.WriteInt(transferRate,2)
-                            net.WriteInt(self.Increment,32)
-                        net.SendToServer()
-                    end)()
+                    net.Start("TransferMoney")
+                        net.WriteInt(transferRate,2)
+                        net.WriteInt(self.Increment,32)
+                    net.SendToServer()
                 end
             end
         imgui.End3D2D()
