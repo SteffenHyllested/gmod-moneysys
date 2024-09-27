@@ -6,6 +6,10 @@ local SmallMainFontData = {font = "Arial",size = 20,weight = 1500,}
 surface.CreateFont("HyllestedMoney:MainFont", MainFontData)
 surface.CreateFont("HyllestedMoney:MainFontSmall", SmallMainFontData)
 
+local TRANSFER_NONE = 0
+local TRANSFER_WITHDRAW = -1
+local TRANSFER_DEPOSIT = 1
+
 function ENT:Initialize()
     self.Increment = 1
 end
@@ -50,19 +54,19 @@ function ENT:DrawTranslucent()
 
             // If the player is pressing E
             if imgui.IsPressed() then
-                local transferRate = 0 // Denotes what kind of, if any, transfer is being done.
+                local transferRate = TRANSFER_NONE // Denotes what kind of, if any, transfer is being done.
                 if imgui.IsHovering(52,160,144,50) then // Deposit button is being pressed
-                    transferRate = 1
+                    transferRate = TRANSFER_DEPOSIT
                 elseif imgui.IsHovering(204,160,144,50) then // Withdraw button is being pressed
-                    transferRate = -1
+                    transferRate = TRANSFER_WITHDRAW
                 elseif imgui.IsHovering(52,100,30,50) then // Left arrow button is being pressed
                     self.Increment = math.max(self.Increment - 1,1)
                 elseif imgui.IsHovering(318,100,30,50) then // Right arrow button is being pressed
                     self.Increment = self.Increment + 1
                 end
 
-                if transferRate ~= 0 then
-                    net.Start("TransferMoney")
+                if transferRate ~= TRANSFER_NONE then // A transfer is being done
+                    net.Start("HyllestedMoney:TransferMoney")
                         net.WriteInt(transferRate,2)
                         net.WriteInt(self.Increment,32)
                     net.SendToServer()

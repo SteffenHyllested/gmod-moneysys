@@ -31,8 +31,8 @@ hook.Add( "PlayerInitialSpawn","moneyaddon-on-join",function(client)
 	end
 end)
 
-util.AddNetworkString("TransferMoney")
-net.Receive("TransferMoney",function(length,client)
+util.AddNetworkString("HyllestedMoney:TransferMoney")
+net.Receive("HyllestedMoney:TransferMoney",function(length,client)
 	local transferRate = net.ReadInt(2)
 	local transferAmount = net.ReadInt(32)
 
