@@ -21,8 +21,8 @@ local playerData = LoadDataFromFile()
 
 hook.Add( "PlayerInitialSpawn","moneyaddon-on-join",function(client)
 	if playerData[client:AccountID()] then -- if the player has data, load it
-		client:SetNWInt("BankMoney",data[client:AccountID()].Bank)
-		client:SetNWInt("Money",data[client:AccountID()].Wallet)
+		client:SetNWInt("BankMoney",playerData[client:AccountID()].Bank)
+		client:SetNWInt("Money",playerData[client:AccountID()].Wallet)
 	else -- otherwise create and save data for them
 		client:SetNWInt("Money",100)
 		client:SetNWInt("BankMoney",0)
