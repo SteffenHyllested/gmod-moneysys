@@ -1,8 +1,8 @@
 include("shared.lua")
 local imgui = include("libs/imgui.lua")
 
-local TRANSFER_NONE = 0
-local TRANSFER_WITHDRAW = -1
+local TRANSFER_NONE = nil
+local TRANSFER_WITHDRAW = 0
 local TRANSFER_DEPOSIT = 1
 
 function ENT:Initialize()
@@ -49,21 +49,18 @@ function ENT:DrawTranslucent()
 
             // If the player is pressing E
             if imgui.IsPressed() then
-                local transferRate = TRANSFER_NONE // Denotes what kind of, if any, transfer is being done.
-                if imgui.IsHovering(52,160,144,50) then // Deposit button is being pressed
-                    transferRate = TRANSFER_DEPOSIT
-                elseif imgui.IsHovering(204,160,144,50) then // Withdraw button is being pressed
-                    transferRate = TRANSFER_WITHDRAW
-                elseif imgui.IsHovering(52,100,30,50) then // Left arrow button is being pressed
-                    self.Increment = math.max(self.Increment - 1,1)
+                if imgui.IsHovering(52,100,30,50) then // Left arrow button is being pressed
+                    self.Increment = math.max(self.Increment - 1, 1)
                 elseif imgui.IsHovering(318,100,30,50) then // Right arrow button is being pressed
-                    self.Increment = self.Increment + 1
+                    self.Increment = math.min(self.Increment + 1, 2^32)
                 end
 
-                if transferRate ~= TRANSFER_NONE then // A transfer is being done
+                local transferType = (imgui.IsHovering(52,160,144,50) and TRANSFER_DEPOSIT) or (imgui.IsHovering(204,160,144,50) and TRANSFER_WITHDRAW) or TRANSFER_NONE
+
+                if transferType ~= TRANSFER_NONE then // A transfer is being done
                     net.Start("HyllestedMoney:TransferMoney")
-                        net.WriteInt(transferRate,2)
-                        net.WriteInt(self.Increment,32)
+                        net.WriteUInt(transferType,1)
+                        net.WriteUInt(self.Increment,32)
                     net.SendToServer()
                 end
             end

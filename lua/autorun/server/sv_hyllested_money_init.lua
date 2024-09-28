@@ -2,6 +2,9 @@ AddCSLuaFile("autorun/client/cl_hyllested_money_init.lua")
 
 local TABLE_NAME = "HyllestedMoney:PlayerData" // Note there are quotes inside the string as the table name includes a colon
 
+local TRANSFER_WITHDRAW = 0
+local TRANSFER_DEPOSIT = 1
+
 -- Create the table if it doesn't exist
 if not sql.TableExists(TABLE_NAME) then
 	sql.Begin()
@@ -40,24 +43,28 @@ end)
 
 util.AddNetworkString("HyllestedMoney:TransferMoney")
 net.Receive("HyllestedMoney:TransferMoney",function(length,client)
-	local transferRate = net.ReadInt(2)
-	local transferAmount = net.ReadInt(32)
+	local transferType = net.ReadUInt(1)
+	local transferAmount = net.ReadUInt(32)
 
-	if not (transferRate == -1 or transferRate == 1) then return end -- Just to avoid shenanigans with people trying to exploit this
-	local moneyReq = transferRate*transferAmount
-	local bankReq = -transferRate*transferAmount
+	local walletAmount = client:GetNWInt("Money")
+	local bankAmount = client:GetNWInt("BankMoney")
 
-	print(moneyReq)
-	print(client:GetNWInt("Money"))
+	if transferType == TRANSFER_DEPOSIT then -- Deposit
+		local sufficientWalletAmount = walletAmount >= transferAmount
+		if not sufficientWalletAmount then return end -- Bail out as client has insufficient money in wallet
 
-	if moneyReq > client:GetNWInt("Money") then return end -- Not enough money in wallet
-	if bankReq > client:GetNWInt("BankMoney") then return end -- Not enough money in bank
-	-- We check both so I don't have to branch off depending on whether it's a deposit or withdrawal
+		client:SetNWInt("Money",walletAmount - transferAmount)
+		client:SetNWInt("BankMoney",bankAmount + transferAmount)
+	elseif transferType == TRANSFER_WITHDRAW then -- Withdrawal
+		local sufficientBankAmount = bankAmount >= transferAmount
+		if not sufficientBankAmount then return end -- Bail out as client has insufficient money in bank
 
-	client:SetNWInt("Money",client:GetNWInt("Money") + bankReq)
-	client:SetNWInt("BankMoney",client:GetNWInt("BankMoney") + moneyReq)
-	-- viola
+		client:SetNWInt("Money",walletAmount + transferAmount)
+		client:SetNWInt("BankMoney",bankAmount - transferAmount)
+	else
+		print(string.format("Warning: Invalid transferType %d, expected %d or %d", transferType, TRANSFER_DEPOSIT, TRANSFER_WITHDRAW))
+		return
+	end
 
-	-- Update save file
 	SavePlayerData(client)
 end)
