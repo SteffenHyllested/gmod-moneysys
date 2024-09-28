@@ -1,6 +1,6 @@
 AddCSLuaFile("autorun/client/cl_hyllested_money_init.lua")
 
-local TABLE_NAME = "HyllestedMoney:PlayerData" // Note there are quotes inside the string as the table name includes a colon
+local TABLE_NAME = "HyllestedMoney:PlayerData"
 
 local TRANSFER_WITHDRAW = 0
 local TRANSFER_DEPOSIT = 1
