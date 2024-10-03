@@ -28,7 +28,7 @@ local FONT_HEIGHT = draw.GetFontHeight("HyllestedMoney:MainFont")
 local FONT_HEIGHT_SMALL = draw.GetFontHeight("HyllestedMoney:MainFontSmall")
 
 function ENT:Initialize()
-    self.Increment = 1
+    self.Increment = 10
 end
 
 function ENT:DrawTranslucent()
@@ -80,10 +80,15 @@ function ENT:DrawTranslucent()
 
             // If the player is pressing E
             if imgui.IsPressed() then
+                local increment = 1
+                if input.IsShiftDown() then -- Hold shift to change increment to 10 instead of 1
+                    increment = 10
+                end
+
                 if imgui.IsHovering(leftArrowPositionX, arrowPositionY, ATM_ARROW_BUTTON_WIDTH, ATM_ARROW_BUTTON_HEIGHT) then // Left arrow button is being pressed
-                    self.Increment = math.max(self.Increment - 1, 1) -- Lower limit is 1
+                    self.Increment = math.max(self.Increment - increment, 1) -- Lower limit is 1
                 elseif imgui.IsHovering(rightArrowPositionX, arrowPositionY, ATM_ARROW_BUTTON_WIDTH, ATM_ARROW_BUTTON_HEIGHT) then // Right arrow button is being pressed
-                    self.Increment = math.min(self.Increment + 1, 2^32) -- Upper limit is set by 32 bit limit
+                    self.Increment = math.min(self.Increment + increment, 2^32) -- Upper limit is set by 32 bit limit
                 end
 
                 local isHoveringDeposit = imgui.IsHovering(depositButtonPositionX,transferButtonPositionY, transferButtonWidth, ATM_TRANSFER_BUTTON_HEIGHT)
