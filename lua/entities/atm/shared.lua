@@ -5,3 +5,4 @@ ENT.PrintName = "ATM"
 ENT.RenderGroup = RENDERGROUP_BOTH
 
 ENT.Spawnable = true
+ENT.AdminOnly = true
