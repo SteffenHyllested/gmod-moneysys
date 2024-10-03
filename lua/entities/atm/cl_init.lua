@@ -122,6 +122,9 @@ function ENT:DrawTranslucent()
             local isHoveringTransferButton = imgui.IsHovering(transferPageButtonX, transferPageButtonY, ATM_UI_WIDTH - ATM_UI_PADDING_X * 2, ATM_MENU_BUTTON_HEIGHT)
             local isHoveringHistoryButton = imgui.IsHovering(historyPageButtonX, historyPageButtonY, ATM_UI_WIDTH - ATM_UI_PADDING_X * 2, ATM_MENU_BUTTON_HEIGHT)
 
+            // (title is draw here as well because of the fade out animation when stepping away from the ATM requiring it)
+            draw.DrawText("ATM - MoneyBank™", "HyllestedMoney:MainFont", ATM_UI_WIDTH / 2, ATM_UI_PADDING_Y, WHITE, TEXT_ALIGN_CENTER)
+
             -- Draw account page button
             surface.SetDrawColor(isHoveringAccountButton and ATM_GREY_BUTTON_COLOR_DARK or ATM_GREY_BUTTON_COLOR)
             surface.DrawRect(accountPageButtonX, accountPageButtonY, ATM_UI_WIDTH - ATM_UI_PADDING_X * 2, ATM_MENU_BUTTON_HEIGHT)
@@ -175,7 +178,7 @@ function ENT:DrawTranslucent()
             local isHoveringDeposit = imgui.IsHovering(depositButtonPositionX,transferButtonPositionY, transferButtonWidth, ATM_TRANSFER_BUTTON_HEIGHT)
             local isHoveringWithdraw = imgui.IsHovering(withdrawButtonPositionX,transferButtonPositionY, transferButtonWidth, ATM_TRANSFER_BUTTON_HEIGHT)
 
-            // ATM title and current balance
+            // ATM title and current balance (title is draw here as well because of the fade out animation when stepping away from the ATM requiring it)
             draw.DrawText("ATM - MoneyBank™", "HyllestedMoney:MainFont", ATM_UI_WIDTH / 2, ATM_UI_PADDING_Y, WHITE, TEXT_ALIGN_CENTER)
             draw.DrawText("Current Balance:", "HyllestedMoney:MainFontSmall", ATM_UI_PADDING_X, ATM_UI_PADDING_Y + FONT_HEIGHT + FONT_HEIGHT_SMALL / 2, WHITE, TEXT_ALIGN_LEFT)
             draw.DrawText(string.format("$%.2f",client:GetNWInt("bankBalance")), "HyllestedMoney:MainFont",ATM_UI_WIDTH - ATM_UI_PADDING_X, ATM_UI_PADDING_Y + FONT_HEIGHT, GREEN,TEXT_ALIGN_RIGHT)
@@ -291,6 +294,15 @@ function ENT:DrawTranslucent()
                     self:EmitSound(CLICK_SOUND)
                     button.callback()
                 end
+            end
+        end
+
+        if distance > DISTANCE_LIMIT * 2 then -- Player has moved away
+            if not self.pageFadeAnimation.active and self.active then
+                self.pageFadeAnimation.active = true 
+                self.pageFadeAnimation.startTime = CurTime()
+                self.pageFadeAnimation.fadeTo = FRONT_PAGE
+                self.active = false
             end
         end
         imgui.End3D2D()
