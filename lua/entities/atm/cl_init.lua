@@ -34,7 +34,7 @@ end
 function ENT:DrawTranslucent()
     local client = LocalPlayer()
 
-    if imgui.Entity3D2D(self, Vector(1, -20, 24), Angle(0, 90, 85), 0.1) then // These values would need to be adjusted depending on the model used.
+    if imgui.Entity3D2D(self, Vector(1, -20.15, 24), Angle(0, 90, 85), 0.1) then // These values would need to be adjusted depending on the model used.
             // Drawing the monitor backdrop
             surface.SetDrawColor(ATM_BACKDROP_COLOR)
             surface.DrawRect(0, 0, ATM_UI_WIDTH, ATM_UI_HEIGHT)
