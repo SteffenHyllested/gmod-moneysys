@@ -33,7 +33,7 @@ function LoadPlayerData( client )
 	end
 end
 
-hook.Add( "PlayerInitialSpawn","moneyaddon-on-join",function(client)
+hook.Add( "PlayerInitialSpawn", "hyllestedmoney-on-join", function(client)
 	LoadPlayerData(client)
 end)
 
