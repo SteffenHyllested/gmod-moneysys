@@ -37,6 +37,15 @@ hook.Add( "PlayerInitialSpawn", "hyllestedmoney-on-join", function(client)
 	LoadPlayerData(client)
 end)
 
+hook.Add( "playerGetSalary", "hyllestedmoney-on-salary", function(client, amount)
+	print(client:Name(), amount)
+	local bankBalance = client:GetNWInt("bankBalance")
+	client:SetNWInt("bankBalance",bankBalance + amount)
+	SavePlayerData(client)
+
+	return false, string.format("Payday! $%d has been transferred to your bank account!", amount), 0
+end)
+
 util.AddNetworkString("HyllestedMoney:TransferMoney")
 net.Receive("HyllestedMoney:TransferMoney",function(length,client)
 	local transferType = net.ReadUInt(1)
