@@ -29,6 +29,8 @@ local ATM_GREY_BUTTON_COLOR_DARK = Color(30, 30, 30, 255)
 local FONT_HEIGHT = draw.GetFontHeight("HyllestedMoney:MainFont")
 local FONT_HEIGHT_SMALL = draw.GetFontHeight("HyllestedMoney:MainFontSmall")
 
+local CLICK_SOUND = Sound("ui/bubble_click.wav")
+
 function ENT:Initialize()
     self.Increment = 10
 end
@@ -98,13 +100,16 @@ function ENT:DrawTranslucent()
 
                 if isHoveringLeftArrow then // Left arrow button is being pressed
                     self.Increment = math.max(self.Increment - increment, 1) -- Lower limit is 1
+                    self:EmitSound(CLICK_SOUND)
                 elseif isHoveringRightArrow then // Right arrow button is being pressed
                     self.Increment = math.min(self.Increment + increment, 2^32) -- Upper limit is set by 32 bit limit
+                    self:EmitSound(CLICK_SOUND)
                 end
 
                 local transferType = (isHoveringDeposit and TRANSFER_DEPOSIT) or (isHoveringWithdraw and TRANSFER_WITHDRAW) or TRANSFER_NONE
 
                 if transferType ~= TRANSFER_NONE then // A transfer is being done
+                    self:EmitSound(CLICK_SOUND)
                     net.Start("HyllestedMoney:TransferMoney")
                         net.WriteUInt(transferType,1)
                         net.WriteUInt(self.Increment,32)
