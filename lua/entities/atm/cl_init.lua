@@ -20,9 +20,11 @@ local ATM_TRANSFER_BUTTON_HEIGHT = 50
 
 local WHITE = Color(255, 255, 255, 255)
 local GREEN = Color(100, 200, 125, 255)
+local GREEN_DARK = Color(50, 150, 75, 255)
 local DARK_GREY = Color(25, 25, 25, 255)
 local ATM_BACKDROP_COLOR = Color(50, 50, 50, 255)
 local ATM_GREY_BUTTON_COLOR = Color(35, 35, 35, 255)
+local ATM_GREY_BUTTON_COLOR_DARK = Color(30, 30, 30, 255)
 
 local FONT_HEIGHT = draw.GetFontHeight("HyllestedMoney:MainFont")
 local FONT_HEIGHT_SMALL = draw.GetFontHeight("HyllestedMoney:MainFontSmall")
@@ -35,6 +37,20 @@ function ENT:DrawTranslucent()
     local client = LocalPlayer()
 
     if imgui.Entity3D2D(self, Vector(1, -20.15, 24), Angle(0, 90, 85), 0.1) then // These values would need to be adjusted depending on the model used.
+            local leftArrowPositionX = ATM_UI_PADDING_X
+            local rightArrowPositionX = ATM_UI_WIDTH - ATM_UI_PADDING_X - ATM_ARROW_BUTTON_WIDTH
+            local arrowPositionY = ATM_UI_PADDING_Y + FONT_HEIGHT * 2 + ATM_LINE_PADDING
+
+            local depositButtonPositionX = ATM_UI_PADDING_X
+            local withdrawButtonPositionX = ATM_UI_WIDTH / 2 + ATM_BUTTON_PADDING / 2
+            local transferButtonPositionY = arrowPositionY + ATM_ARROW_BUTTON_HEIGHT + ATM_LINE_PADDING
+            local transferButtonWidth = ATM_UI_WIDTH / 2 - ATM_UI_PADDING_X - ATM_BUTTON_PADDING / 2
+
+            local isHoveringLeftArrow = imgui.IsHovering(leftArrowPositionX, arrowPositionY, ATM_ARROW_BUTTON_WIDTH, ATM_ARROW_BUTTON_HEIGHT)
+            local isHoveringRightArrow = imgui.IsHovering(rightArrowPositionX, arrowPositionY, ATM_ARROW_BUTTON_WIDTH, ATM_ARROW_BUTTON_HEIGHT)
+            local isHoveringDeposit = imgui.IsHovering(depositButtonPositionX,transferButtonPositionY, transferButtonWidth, ATM_TRANSFER_BUTTON_HEIGHT)
+            local isHoveringWithdraw = imgui.IsHovering(withdrawButtonPositionX,transferButtonPositionY, transferButtonWidth, ATM_TRANSFER_BUTTON_HEIGHT)
+
             // Drawing the monitor backdrop
             surface.SetDrawColor(ATM_BACKDROP_COLOR)
             surface.DrawRect(0, 0, ATM_UI_WIDTH, ATM_UI_HEIGHT)
@@ -45,12 +61,10 @@ function ENT:DrawTranslucent()
             draw.DrawText(string.format("$%.2f",client:GetNWInt("bankBalance")), "HyllestedMoney:MainFont",ATM_UI_WIDTH - ATM_UI_PADDING_X, ATM_UI_PADDING_Y + FONT_HEIGHT, GREEN,TEXT_ALIGN_RIGHT)
 
             // This draws the left and right arrow buttons for adjusting amount deposited/withdrawn
-            local leftArrowPositionX = ATM_UI_PADDING_X
-            local rightArrowPositionX = ATM_UI_WIDTH - ATM_UI_PADDING_X - ATM_ARROW_BUTTON_WIDTH
-            local arrowPositionY = ATM_UI_PADDING_Y + FONT_HEIGHT * 2 + ATM_LINE_PADDING
-
-            surface.SetDrawColor(ATM_GREY_BUTTON_COLOR)
+            surface.SetDrawColor(isHoveringLeftArrow and ATM_GREY_BUTTON_COLOR_DARK or ATM_GREY_BUTTON_COLOR)
             surface.DrawRect(leftArrowPositionX, arrowPositionY, ATM_ARROW_BUTTON_WIDTH, ATM_ARROW_BUTTON_HEIGHT)
+
+            surface.SetDrawColor(isHoveringRightArrow and ATM_GREY_BUTTON_COLOR_DARK or ATM_GREY_BUTTON_COLOR)
             surface.DrawRect(rightArrowPositionX, arrowPositionY, ATM_ARROW_BUTTON_WIDTH, ATM_ARROW_BUTTON_HEIGHT)
 
             // This draws the arrows themselves in the buttons drawn above
@@ -65,13 +79,10 @@ function ENT:DrawTranslucent()
             draw.DrawText(string.format("$%.2f",self.Increment),"HyllestedMoney:MainFont", ATM_UI_WIDTH / 2, arrowPositionY + (ATM_ARROW_BUTTON_HEIGHT - FONT_HEIGHT) / 2, WHITE, TEXT_ALIGN_CENTER)
 
             // This draws the deposit and withdraw buttons
-            local depositButtonPositionX = ATM_UI_PADDING_X
-            local withdrawButtonPositionX = ATM_UI_WIDTH / 2 + ATM_BUTTON_PADDING / 2
-            local transferButtonPositionY = arrowPositionY + ATM_ARROW_BUTTON_HEIGHT + ATM_LINE_PADDING
-            local transferButtonWidth = ATM_UI_WIDTH / 2 - ATM_UI_PADDING_X - ATM_BUTTON_PADDING / 2
-
-            surface.SetDrawColor(GREEN)
+            surface.SetDrawColor(isHoveringDeposit and GREEN_DARK or GREEN)
             surface.DrawRect(depositButtonPositionX, transferButtonPositionY, transferButtonWidth, ATM_TRANSFER_BUTTON_HEIGHT)
+
+            surface.SetDrawColor(isHoveringWithdraw and GREEN_DARK or GREEN)
             surface.DrawRect(withdrawButtonPositionX, transferButtonPositionY, transferButtonWidth, ATM_TRANSFER_BUTTON_HEIGHT)
 
             // This draws the text for the deposit and withdraw buttons
@@ -85,14 +96,11 @@ function ENT:DrawTranslucent()
                     increment = 10
                 end
 
-                if imgui.IsHovering(leftArrowPositionX, arrowPositionY, ATM_ARROW_BUTTON_WIDTH, ATM_ARROW_BUTTON_HEIGHT) then // Left arrow button is being pressed
+                if isHoveringLeftArrow then // Left arrow button is being pressed
                     self.Increment = math.max(self.Increment - increment, 1) -- Lower limit is 1
-                elseif imgui.IsHovering(rightArrowPositionX, arrowPositionY, ATM_ARROW_BUTTON_WIDTH, ATM_ARROW_BUTTON_HEIGHT) then // Right arrow button is being pressed
+                elseif isHoveringRightArrow then // Right arrow button is being pressed
                     self.Increment = math.min(self.Increment + increment, 2^32) -- Upper limit is set by 32 bit limit
                 end
-
-                local isHoveringDeposit = imgui.IsHovering(depositButtonPositionX,transferButtonPositionY, transferButtonWidth, ATM_TRANSFER_BUTTON_HEIGHT)
-                local isHoveringWithdraw = imgui.IsHovering(withdrawButtonPositionX,transferButtonPositionY, transferButtonWidth, ATM_TRANSFER_BUTTON_HEIGHT)
 
                 local transferType = (isHoveringDeposit and TRANSFER_DEPOSIT) or (isHoveringWithdraw and TRANSFER_WITHDRAW) or TRANSFER_NONE
 
