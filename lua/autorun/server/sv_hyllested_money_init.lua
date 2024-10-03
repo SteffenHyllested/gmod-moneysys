@@ -1,5 +1,3 @@
-AddCSLuaFile("autorun/client/cl_hyllested_money_init.lua")
-
 local TABLE_NAME = "HyllestedMoney:PlayerData"
 
 local TRANSFER_WITHDRAW = 0
