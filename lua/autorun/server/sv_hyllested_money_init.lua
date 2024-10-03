@@ -42,7 +42,6 @@ hook.Add( "PlayerInitialSpawn", "hyllestedmoney-on-join", function(client)
 end)
 
 hook.Add( "playerGetSalary", "hyllestedmoney-on-salary", function(client, amount)
-	print(client:Name(), amount)
 	local bankBalance = client:GetNWInt("bankBalance")
 	client:SetNWInt("bankBalance",bankBalance + amount)
 	SavePlayerData(client)
