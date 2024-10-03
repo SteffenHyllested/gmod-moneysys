@@ -3,6 +3,10 @@ local TABLE_NAME = "HyllestedMoney:PlayerData"
 local TRANSFER_WITHDRAW = 0
 local TRANSFER_DEPOSIT = 1
 
+-- For some reason, these Enums are nil by default
+local NOTIFY_GENERIC = 0
+local NOTIFY_ERROR = 1
+
 -- Create the table if it doesn't exist
 if not sql.TableExists(TABLE_NAME) then
 	sql.Begin()
@@ -54,18 +58,24 @@ net.Receive("HyllestedMoney:TransferMoney",function(length,client)
 	local bankBalance = client:GetNWInt("bankBalance")
 
 	if transferType == TRANSFER_DEPOSIT then -- Deposit
-		if not client:canAfford(transferAmount) then return end -- Bail out as client has insufficient money in wallet
+		if not client:canAfford(transferAmount) then
+			DarkRP.notify(client, NOTIFY_ERROR, 5, string.format("Insufficient funds to deposit $%d!", transferAmount))
+			return -- Bail out as client has insufficient money in wallet
+		end
 
 		client:addMoney(-transferAmount)
 		client:SetNWInt("bankBalance",bankBalance + transferAmount)
-		DarkRP.notify(client, NOTIFY_GENERIC, 5, string.format("Successfully deposited %d!", transferAmount))
+		DarkRP.notify(client, NOTIFY_GENERIC, 5, string.format("Successfully deposited $%d!", transferAmount))
 	elseif transferType == TRANSFER_WITHDRAW then -- Withdrawal
 		local sufficientBankBalance = bankBalance >= transferAmount
-		if not sufficientBankBalance then return end -- Bail out as client has insufficient money in bank
+		if not sufficientBankBalance then
+			DarkRP.notify(client, NOTIFY_ERROR, 5, string.format("Insufficient funds to withdraw $%d!", transferAmount))
+			return -- Bail out as client has insufficient money in bank
+		end
 
 		client:addMoney(transferAmount)
 		client:SetNWInt("bankBalance",bankBalance - transferAmount)
-		DarkRP.notify(client, NOTIFY_GENERIC, 5, string.format("Successfully withdrew %d!", transferAmount))
+		DarkRP.notify(client, NOTIFY_GENERIC, 5, string.format("Successfully withdrew $%d!", transferAmount))
 	else
 		print(string.format("Warning: Invalid transferType %d, expected %d or %d", transferType, TRANSFER_DEPOSIT, TRANSFER_WITHDRAW))
 		DarkRP.notify(client, NOTIFY_ERROR, 5, "An error occured while handling your transfer.")
