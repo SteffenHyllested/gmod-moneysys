@@ -58,14 +58,17 @@ net.Receive("HyllestedMoney:TransferMoney",function(length,client)
 
 		client:addMoney(-transferAmount)
 		client:SetNWInt("bankBalance",bankBalance + transferAmount)
+		DarkRP.notify(client, NOTIFY_GENERIC, 5, string.format("Successfully deposited %d!", transferAmount))
 	elseif transferType == TRANSFER_WITHDRAW then -- Withdrawal
 		local sufficientBankBalance = bankBalance >= transferAmount
 		if not sufficientBankBalance then return end -- Bail out as client has insufficient money in bank
 
 		client:addMoney(transferAmount)
 		client:SetNWInt("bankBalance",bankBalance - transferAmount)
+		DarkRP.notify(client, NOTIFY_GENERIC, 5, string.format("Successfully withdrew %d!", transferAmount))
 	else
 		print(string.format("Warning: Invalid transferType %d, expected %d or %d", transferType, TRANSFER_DEPOSIT, TRANSFER_WITHDRAW))
+		DarkRP.notify(client, NOTIFY_ERROR, 5, "An error occured while handling your transfer.")
 		return
 	end
 
