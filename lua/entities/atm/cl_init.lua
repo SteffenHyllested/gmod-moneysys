@@ -108,7 +108,7 @@ function ENT:OpenTransferConfirmMenu()
 
     function confirmButton:DoClick()
         net.Start("HyllestedMoney:PlayerTransferMoney")
-            net.WriteUInt(entity.transferTarget,64)
+            net.WriteUInt64(entity.transferTarget)
             net.WriteUInt(entity.increment,32)
         net.SendToServer()
         frame:Close()
