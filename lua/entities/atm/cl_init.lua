@@ -118,7 +118,7 @@ end
 function ENT:Initialize()
     self.increment = 10
     self.page = FRONT_PAGE
-    self.transferTarget = nil -- SteamID (x64) of the player to send money to
+    self.transferTarget = "" -- SteamID (x64) of the player to send money to
     self.active = false -- This denotes whether or not the player has interacted with the ATM yet
 
     self.startupAnimation = {
@@ -350,7 +350,7 @@ function ENT:DrawTranslucent()
             surface.SetDrawColor(DARK_GREY)
             surface.DrawRect(targetEntryPositionX, targetEntryPositionY, ATM_UI_WIDTH - ATM_UI_PADDING_X * 2 - ATM_ARROW_BUTTON_WIDTH, ATM_ARROW_BUTTON_HEIGHT)
 
-            draw.DrawText(self.transferTarget or "", "HyllestedMoney:MainFontSmall", targetEntryPositionX + (ATM_UI_WIDTH - ATM_UI_PADDING_X * 2 - ATM_ARROW_BUTTON_WIDTH) / 2, targetEntryPositionY + (ATM_ARROW_BUTTON_HEIGHT - FONT_HEIGHT_SMALL) / 2, WHITE, TEXT_ALIGN_CENTER)
+            draw.DrawText(self.transferTarget, "HyllestedMoney:MainFontSmall", targetEntryPositionX + (ATM_UI_WIDTH - ATM_UI_PADDING_X * 2 - ATM_ARROW_BUTTON_WIDTH) / 2, targetEntryPositionY + (ATM_ARROW_BUTTON_HEIGHT - FONT_HEIGHT_SMALL) / 2, WHITE, TEXT_ALIGN_CENTER)
 
             // This draws the edit button for the transfer target
             surface.SetDrawColor(isHoveringTargetEdit and ATM_GREY_BUTTON_COLOR_DARK or ATM_GREY_BUTTON_COLOR)
@@ -379,7 +379,7 @@ function ENT:DrawTranslucent()
             end})
 
             table.insert(buttons, {x = transferButtonPositionX, y = transferButtonPositionY, w = transferButtonWidth, h = ATM_TRANSFER_BUTTON_HEIGHT, callback = function()
-                if not self.transferTarget then
+                if self.transferTarget == "" then
                 -- Doesn't used DarkRP method as it is server only
                     notification.AddLegacy( "No Transfer recipient selected!", NOTIFY_ERROR, 5 )
                     return
