@@ -14,6 +14,17 @@ if not sql.TableExists(TABLE_NAME) then
 	sql.Commit()
 end
 
+function IdHasEntry( id )
+	local sanitizedId = sql.SQLStr(id)
+	local query = string.format("SELECT id FROM `" .. TABLE_NAME .. "` WHERE id=" .. id)
+	local result = sql.Query(query)
+
+	if not result then
+		return false -- Could be an error OR no data found
+	end
+	return true
+end
+
 function SavePlayerData( client )
 	local bank = client:GetNWInt("bankBalance")
 	local query = string.format("UPDATE `%s` SET bank=%d WHERE id=%q", TABLE_NAME, bank, client:SteamID64() )
@@ -49,7 +60,9 @@ hook.Add( "playerGetSalary", "hyllestedmoney-on-salary", function(client, amount
 	return false, string.format("Payday! $%d has been transferred to your bank account!", amount), 0
 end)
 
-util.AddNetworkString("HyllestedMoney:TransferMoney")
+util.AddNetworkString("HyllestedMoney:TransferMoney") -- Transfering funds to/from bank/wallet
+util.AddNetworkString("HyllestedMoney:PlayerTransferMoney") -- Transfering funds between players
+
 net.Receive("HyllestedMoney:TransferMoney",function(length,client)
 	local transferType = net.ReadUInt(1)
 	local transferAmount = net.ReadUInt(32)
@@ -82,4 +95,49 @@ net.Receive("HyllestedMoney:TransferMoney",function(length,client)
 	end
 
 	SavePlayerData(client)
+end)
+
+net.Receive("HyllestedMoney:PlayerTransferMoney", function(length, client)
+	local transferTarget = net.ReadUInt64()
+	local transferAmount = net.ReadUInt(32)
+
+	local bankBalance = client:GetNWInt("bankBalance")
+
+	if bankBalance < transferAmount then
+		DarkRP.notify(client, NOTIFY_ERROR, 5, string.format("Insufficient funds to transfer $%d!", transferAmount))
+		return
+	end
+	
+	-- NOTE: Add a rate limit here so that players can not spam this.
+	-- We must behave dependently on whether the target player is currently online
+	local targetClient = player.GetBySteamID64(transferTarget)
+	if targetClient then -- The player is online
+		targetClient:SetNWInt("bankBalance", targetClient:GetNWInt("bankBalance") + transferAmount)
+		client:SetNWInt("bankBalance", client:GetNWInt("bankBalance") - transferAmount)
+
+		SavePlayerData(client)
+		SavePlayerData(targetClient)
+
+		DarkRP.notify(client, NOTIFY_GENERIC, 5, string.format("Successfully transfered $%d!", transferAmount))
+	else -- There is no player online with that steamid
+		print(transferTarget, client:SteamID64())
+		local playerExists = IdHasEntry(transferTarget) -- Checks whether or not the steamid is in the databse, i.e. have they ever played
+		if not playerExists then -- Don't allow transfers to players that have never played, as it was probably typo
+			DarkRP.notify(client, NOTIFY_ERROR, 5, "No such account Id.")
+			return
+		end
+
+		client:SetNWInt("bankBalance", client:GetNWInt("bankBalance") - transferAmount)
+		SavePlayerData(client)
+
+		local targetSanitized = sql.SQLStr(transferTarget)
+		local targetBalance = sql.Query(string.format("SELECT bank FROM `%s` WHERE id=%q", TABLE_NAME, targetSanitized))
+
+		local query = string.format("UPDATE `%s` SET bank=%d WHERE id=%q", TABLE_NAME, targetBalance + transferAmount, targetSanitized )
+
+		sql.Begin()
+			sql.Query(query)
+		sql.Commit()
+		DarkRP.notify(client, NOTIFY_GENERIC, 5, string.format("Successfully transfered $%d!", transferAmount))
+	end
 end)
