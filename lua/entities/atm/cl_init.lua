@@ -14,17 +14,17 @@ local HISTORY_PAGE = 4
 local ATM_UI_WIDTH = 400
 local ATM_UI_HEIGHT = 230
 
-local ATM_UI_PADDING_Y = 20
+local ATM_UI_PADDING_Y = 15
 local ATM_UI_PADDING_X = 50
-local ATM_LINE_PADDING = 8
-local ATM_BUTTON_PADDING = 8
+local ATM_LINE_PADDING = 5
+local ATM_BUTTON_PADDING = 5
 
 local ATM_ARROW_BUTTON_WIDTH = 35
 local ATM_ARROW_BUTTON_HEIGHT = 35
 
 local ATM_MENU_BUTTON_HEIGHT = 35
 
-local ATM_TRANSFER_BUTTON_HEIGHT = 50
+local ATM_TRANSFER_BUTTON_HEIGHT = 35
 
 local WHITE = Color(255, 255, 255, 255)
 local TRANSPARENT_WHITE = Color(255, 255, 255, 0)
@@ -47,9 +47,78 @@ function CubicEase(n)
     return n^2 * (3 - 2*n)
 end
 
+function ENT:OpenTransferSelectionMenu()
+    local entity = self
+
+    local popupWidth, popupHeight = 225, 55
+
+    local frame = vgui.Create( "DFrame" )
+    frame:SetPos( ScrW() / 2 - popupWidth / 2, ScrH() / 2 - popupHeight / 2 ) 
+    frame:SetSize( popupWidth, popupHeight ) 
+    frame:SetTitle( "Select Transfer Target" ) 
+    frame:SetVisible( true ) 
+    frame:SetDraggable( false ) 
+    frame:ShowCloseButton( true ) 
+    frame:MakePopup()
+
+    local textEntry = vgui.Create("DTextEntry", frame)
+    textEntry:Dock(TOP)
+    textEntry:SetPlaceholderText("SteamID (x64)")
+    textEntry:SetNumeric(true)
+    textEntry:RequestFocus()
+
+    function textEntry:OnEnter( value )
+        entity.transferTarget = value
+        frame:Close()
+    end
+end
+
+function ENT:OpenTransferConfirmMenu()
+    local entity = self
+
+    local popupWidth, popupHeight = 400, 100
+
+    local frame = vgui.Create( "DFrame" )
+    frame:SetPos( ScrW() / 2 - popupWidth / 2, ScrH() / 2 - popupHeight / 2 ) 
+    frame:SetSize( popupWidth, popupHeight ) 
+    frame:SetTitle( "Transfer Confirmation" ) 
+    frame:SetVisible( true ) 
+    frame:SetDraggable( false ) 
+    frame:ShowCloseButton( true ) 
+    frame:MakePopup()
+
+    local label = vgui.Create( "DLabel", frame )
+    label:Dock( TOP )
+    label:SetSize( 400, 45 )
+    label:SetFont( "HyllestedMoney:MainFontSmall" )
+    label:SetText( string.format( "Are you sure you want to transfer $%d\nTo account: %d?", self.increment, self.transferTarget ) )
+    label:SetTextColor( DARK_GREY )
+
+    local confirmButton = vgui.Create( "DButton", frame )
+    confirmButton:Dock(LEFT)
+    confirmButton:SetText( "Confirm" )
+
+    local cancelButton = vgui.Create( "DButton", frame )
+    cancelButton:Dock(LEFT)
+    cancelButton:SetText( "Cancel" )
+
+    function cancelButton:DoClick()
+        frame:Close()
+    end
+
+    function confirmButton:DoClick()
+        net.Start("HyllestedMoney:PlayerTransferMoney")
+            net.WriteUInt(entity.transferTarget,64)
+            net.WriteUInt(entity.increment,32)
+        net.SendToServer()
+        frame:Close()
+    end
+end
+
 function ENT:Initialize()
     self.increment = 10
     self.page = FRONT_PAGE
+    self.transferTarget = nil -- SteamID (x64) of the player to send money to
     self.active = false -- This denotes whether or not the player has interacted with the ATM yet
 
     self.startupAnimation = {
@@ -166,7 +235,7 @@ function ENT:DrawTranslucent()
         elseif self.page == ACCOUNT_PAGE then
             local leftArrowPositionX = ATM_UI_PADDING_X
             local rightArrowPositionX = ATM_UI_WIDTH - ATM_UI_PADDING_X - ATM_ARROW_BUTTON_WIDTH
-            local arrowPositionY = ATM_UI_PADDING_Y + FONT_HEIGHT * 2 + ATM_LINE_PADDING
+            local arrowPositionY = ATM_UI_PADDING_Y + FONT_HEIGHT * 2 + ATM_LINE_PADDING * 5
 
             local depositButtonPositionX = ATM_UI_PADDING_X
             local withdrawButtonPositionX = ATM_UI_WIDTH / 2 + ATM_BUTTON_PADDING / 2
@@ -234,6 +303,89 @@ function ENT:DrawTranslucent()
                     net.WriteUInt(TRANSFER_WITHDRAW,1)
                     net.WriteUInt(self.increment,32)
                 net.SendToServer()
+            end})
+        elseif self.page == TRANSFER_PAGE then
+            local leftArrowPositionX = ATM_UI_PADDING_X
+            local rightArrowPositionX = ATM_UI_WIDTH - ATM_UI_PADDING_X - ATM_ARROW_BUTTON_WIDTH
+            local arrowPositionY = ATM_UI_PADDING_Y + FONT_HEIGHT * 2 + ATM_LINE_PADDING
+
+            local targetEntryPositionX = ATM_UI_PADDING_X
+            local targetEntryPositionY = arrowPositionY + ATM_ARROW_BUTTON_HEIGHT + ATM_LINE_PADDING
+
+            local targetEditButtonPositionX = ATM_UI_WIDTH - ATM_UI_PADDING_X - ATM_ARROW_BUTTON_WIDTH
+
+            local transferButtonPositionX = ATM_UI_PADDING_X
+            local transferButtonPositionY = targetEntryPositionY + ATM_ARROW_BUTTON_HEIGHT + ATM_LINE_PADDING
+            local transferButtonWidth = ATM_UI_WIDTH - ATM_UI_PADDING_X * 2
+
+            local isHoveringLeftArrow = imgui.IsHovering(leftArrowPositionX, arrowPositionY, ATM_ARROW_BUTTON_WIDTH, ATM_ARROW_BUTTON_HEIGHT)
+            local isHoveringRightArrow = imgui.IsHovering(rightArrowPositionX, arrowPositionY, ATM_ARROW_BUTTON_WIDTH, ATM_ARROW_BUTTON_HEIGHT)
+            local isHoveringTargetEdit = imgui.IsHovering(targetEditButtonPositionX, targetEntryPositionY, ATM_ARROW_BUTTON_WIDTH, ATM_ARROW_BUTTON_HEIGHT)
+            local isHoveringTransfer = imgui.IsHovering(transferButtonPositionX,transferButtonPositionY, transferButtonWidth, ATM_TRANSFER_BUTTON_HEIGHT)
+
+            // ATM title and current balance (title is draw here as well because of the fade out animation when stepping away from the ATM requiring it)
+            draw.DrawText("ATM - MoneyBank™", "HyllestedMoney:MainFont", ATM_UI_WIDTH / 2, ATM_UI_PADDING_Y, WHITE, TEXT_ALIGN_CENTER)
+            draw.DrawText("Current Balance:", "HyllestedMoney:MainFontSmall", ATM_UI_PADDING_X, ATM_UI_PADDING_Y + FONT_HEIGHT + FONT_HEIGHT_SMALL / 2, WHITE, TEXT_ALIGN_LEFT)
+            draw.DrawText(string.format("$%.2f",client:GetNWInt("bankBalance")), "HyllestedMoney:MainFont",ATM_UI_WIDTH - ATM_UI_PADDING_X, ATM_UI_PADDING_Y + FONT_HEIGHT, GREEN,TEXT_ALIGN_RIGHT)
+
+            // This draws the left and right arrow buttons for adjusting amount deposited/withdrawn
+            surface.SetDrawColor(isHoveringLeftArrow and ATM_GREY_BUTTON_COLOR_DARK or ATM_GREY_BUTTON_COLOR)
+            surface.DrawRect(leftArrowPositionX, arrowPositionY, ATM_ARROW_BUTTON_WIDTH, ATM_ARROW_BUTTON_HEIGHT)
+
+            surface.SetDrawColor(isHoveringRightArrow and ATM_GREY_BUTTON_COLOR_DARK or ATM_GREY_BUTTON_COLOR)
+            surface.DrawRect(rightArrowPositionX, arrowPositionY, ATM_ARROW_BUTTON_WIDTH, ATM_ARROW_BUTTON_HEIGHT)
+
+            // This draws the arrows themselves in the buttons drawn above
+            draw.DrawText("<", "HyllestedMoney:MainFont", leftArrowPositionX + ATM_ARROW_BUTTON_WIDTH / 2, arrowPositionY + (ATM_ARROW_BUTTON_HEIGHT - FONT_HEIGHT) / 2, WHITE, TEXT_ALIGN_CENTER)
+            draw.DrawText(">", "HyllestedMoney:MainFont", rightArrowPositionX + ATM_ARROW_BUTTON_WIDTH / 2, arrowPositionY + (ATM_ARROW_BUTTON_HEIGHT - FONT_HEIGHT) / 2, WHITE, TEXT_ALIGN_CENTER)
+
+            // This fills the space between the 2 arrow buttons
+            surface.SetDrawColor(DARK_GREY)
+            surface.DrawRect(leftArrowPositionX + ATM_ARROW_BUTTON_WIDTH, arrowPositionY, rightArrowPositionX - leftArrowPositionX - ATM_ARROW_BUTTON_WIDTH, ATM_ARROW_BUTTON_HEIGHT)
+
+            // This draws the current amount being deposited/withdrawn into the space drawn above
+            draw.DrawText(string.format("$%.2f",self.increment),"HyllestedMoney:MainFont", ATM_UI_WIDTH / 2, arrowPositionY + (ATM_ARROW_BUTTON_HEIGHT - FONT_HEIGHT) / 2, WHITE, TEXT_ALIGN_CENTER)
+
+            // This draws the UI for selected the target for the transfer
+            surface.SetDrawColor(DARK_GREY)
+            surface.DrawRect(targetEntryPositionX, targetEntryPositionY, ATM_UI_WIDTH - ATM_UI_PADDING_X * 2 - ATM_ARROW_BUTTON_WIDTH, ATM_ARROW_BUTTON_HEIGHT)
+
+            draw.DrawText(self.transferTarget or "", "HyllestedMoney:MainFontSmall", targetEntryPositionX + (ATM_UI_WIDTH - ATM_UI_PADDING_X * 2 - ATM_ARROW_BUTTON_WIDTH) / 2, targetEntryPositionY + (ATM_ARROW_BUTTON_HEIGHT - FONT_HEIGHT_SMALL) / 2, WHITE, TEXT_ALIGN_CENTER)
+
+            // This draws the edit button for the transfer target
+            surface.SetDrawColor(isHoveringTargetEdit and ATM_GREY_BUTTON_COLOR_DARK or ATM_GREY_BUTTON_COLOR)
+            surface.DrawRect(targetEditButtonPositionX, targetEntryPositionY, ATM_ARROW_BUTTON_WIDTH, ATM_ARROW_BUTTON_HEIGHT)
+
+            // This fills said edit button with text
+            draw.DrawText("...","HyllestedMoney:MainFontSmall", targetEditButtonPositionX + ATM_ARROW_BUTTON_WIDTH / 2, targetEntryPositionY + (ATM_ARROW_BUTTON_HEIGHT - FONT_HEIGHT_SMALL) / 2, WHITE, TEXT_ALIGN_CENTER)
+
+            // This draws the transfer button
+            surface.SetDrawColor(isHoveringTransfer and GREEN_DARK or GREEN)
+            surface.DrawRect(transferButtonPositionX, transferButtonPositionY, transferButtonWidth, ATM_TRANSFER_BUTTON_HEIGHT)
+
+            // This draws the text for the transfer button
+            draw.DrawText("Transfer","HyllestedMoney:MainFontSmall", ATM_UI_WIDTH / 2, transferButtonPositionY + (ATM_TRANSFER_BUTTON_HEIGHT - FONT_HEIGHT_SMALL) / 2, WHITE, TEXT_ALIGN_CENTER)
+
+            table.insert(buttons, {x = targetEditButtonPositionX, y = targetEntryPositionY, w = ATM_ARROW_BUTTON_WIDTH, h = ATM_ARROW_BUTTON_HEIGHT, callback = function() self:OpenTransferSelectionMenu() end})
+
+            table.insert(buttons, {x = leftArrowPositionX, y = arrowPositionY, w = ATM_ARROW_BUTTON_WIDTH, h = ATM_ARROW_BUTTON_HEIGHT, callback = function()
+                local increment = input.IsShiftDown() and 10 or 1 -- Hold shift to change increment to 10 instead of 1
+                self.increment = math.max(self.increment - increment, 1) -- Lower limit is 1
+            end})
+
+            table.insert(buttons, {x = rightArrowPositionX, y = arrowPositionY, w = ATM_ARROW_BUTTON_WIDTH, h = ATM_ARROW_BUTTON_HEIGHT, callback = function()
+                local increment = input.IsShiftDown() and 10 or 1 -- Hold shift to change increment to 10 instead of 1
+                self.increment = math.min(self.increment + increment, 2^32) -- Upper limit is set by 32 bit limit
+            end})
+
+            table.insert(buttons, {x = transferButtonPositionX, y = transferButtonPositionY, w = transferButtonWidth, h = ATM_TRANSFER_BUTTON_HEIGHT, callback = function()
+                if not self.transferTarget then
+                -- Doesn't used DarkRP method as it is server only
+                    notification.AddLegacy( "No Transfer recipient selected!", NOTIFY_ERROR, 5 )
+                    return
+                end
+
+                self:OpenTransferConfirmMenu()
             end})
         end
 
