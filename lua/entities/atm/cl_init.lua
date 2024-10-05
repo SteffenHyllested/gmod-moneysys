@@ -37,6 +37,11 @@ local TRANSPARENT_ATM_BACKDROP_COLOR = Color(50, 50, 50, 0)
 local ATM_GREY_BUTTON_COLOR = Color(35, 35, 35, 255)
 local ATM_GREY_BUTTON_COLOR_DARK = Color(30, 30, 30, 255)
 
+local MainFontData = {font = "Arial",size = 36,weight = 1000,}
+local SmallMainFontData = {font = "Arial",size = 20,weight = 1500,}
+surface.CreateFont("HyllestedMoney:MainFont", MainFontData)
+surface.CreateFont("HyllestedMoney:MainFontSmall", SmallMainFontData)
+
 local FONT_HEIGHT = draw.GetFontHeight("HyllestedMoney:MainFont")
 local FONT_HEIGHT_SMALL = draw.GetFontHeight("HyllestedMoney:MainFontSmall")
 
