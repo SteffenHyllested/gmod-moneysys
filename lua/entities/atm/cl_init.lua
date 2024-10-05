@@ -149,6 +149,8 @@ function ENT:Initialize()
     self.transferTarget = "" -- SteamID (x64) of the player to send money to
     self.active = false -- This denotes whether or not the player has interacted with the ATM yet
 
+    self.buttons = {}
+
     self.startupAnimation = {
         active = false,
         duration = 1,
@@ -162,9 +164,363 @@ function ENT:Initialize()
         fadeTo = FRONT_PAGE,
     }
 
-    self.updateHistory = false
     self.historyData = {}
     self.historyPage = 0
+end
+
+function ENT:AddButton( x, y, w, h, callback )
+    if self.startupAnimation.active then return end -- Disable buttons during transitions
+    if self.pageFadeAnimation.active then return end
+    table.insert(self.buttons, { x = x, y = y, w = w, h = h, callback = callback })
+end
+
+function ENT:IncrementKey( amount, key, lower, upper )
+    local increment = input.IsShiftDown() and 10 * amount or amount -- Hold shift to change increment to 10 instead of 1
+    self[key] = math.Clamp(self[key] + increment, lower, upper)
+end
+
+function ENT:DoTransfer( transferType )
+    net.Start("HyllestedMoney:TransferMoney")
+        net.WriteUInt(transferType,1)
+        net.WriteUInt(self.increment,32)
+    net.SendToServer()
+end
+
+function ENT:FadeToPage( page )
+    self.pageFadeAnimation.active = true 
+    self.pageFadeAnimation.startTime = CurTime()
+    self.pageFadeAnimation.fadeTo = page
+end
+
+function ENT:DrawFrontPage()
+    local client = LocalPlayer()
+
+    local labelPositionY = ATM_UI_HEIGHT / 2 - FONT_HEIGHT
+    local subtextColor = WHITE
+
+    if self.startupAnimation.active then
+        local timePassed = CurTime() - self.startupAnimation.startTime
+        local timeFraction = math.min(timePassed / self.startupAnimation.duration, 1)
+        local timeEased = CubicEase(timeFraction)
+
+        subtextColor = WHITE:Lerp(TRANSPARENT_WHITE, timeEased)
+        labelPositionY = math.max(labelPositionY - (labelPositionY - ATM_UI_PADDING_Y) * timeEased, ATM_UI_PADDING_Y)
+
+        local animationEnded = timeFraction == 1
+        if animationEnded then
+            self.startupAnimation.active = false
+            self.active = true
+
+            self:FadeToPage( MAIN_PAGE )
+        end
+    end
+
+    if not self.active then
+        draw.DrawText("ATM - MoneyBank™", "HyllestedMoney:MainFont", ATM_UI_WIDTH / 2, labelPositionY, WHITE, TEXT_ALIGN_CENTER)
+        draw.DrawText("Touch to Begin", "HyllestedMoney:MainFontSmall", ATM_UI_WIDTH / 2, labelPositionY + FONT_HEIGHT, subtextColor, TEXT_ALIGN_CENTER)
+
+        self:AddButton(0, 0, ATM_UI_WIDTH, ATM_UI_HEIGHT, function()
+            self.startupAnimation.active = true 
+            self.startupAnimation.startTime = CurTime()
+        end)
+    end
+end
+
+function ENT:DrawMainPage()
+    local client = LocalPlayer()
+
+    local accountPageButtonX = ATM_UI_PADDING_X
+    local transferPageButtonX = ATM_UI_PADDING_X
+    local historyPageButtonX = ATM_UI_PADDING_X
+
+    local accountPageButtonY = ATM_UI_PADDING_Y + FONT_HEIGHT + ATM_LINE_PADDING
+    local transferPageButtonY = accountPageButtonY + ATM_MENU_BUTTON_HEIGHT + ATM_LINE_PADDING
+    local historyPageButtonY = transferPageButtonY + ATM_MENU_BUTTON_HEIGHT + ATM_LINE_PADDING
+
+    local isHoveringAccountButton = imgui.IsHovering(accountPageButtonX, accountPageButtonY, ATM_UI_WIDTH - ATM_UI_PADDING_X * 2, ATM_MENU_BUTTON_HEIGHT)
+    local isHoveringTransferButton = imgui.IsHovering(transferPageButtonX, transferPageButtonY, ATM_UI_WIDTH - ATM_UI_PADDING_X * 2, ATM_MENU_BUTTON_HEIGHT)
+    local isHoveringHistoryButton = imgui.IsHovering(historyPageButtonX, historyPageButtonY, ATM_UI_WIDTH - ATM_UI_PADDING_X * 2, ATM_MENU_BUTTON_HEIGHT)
+
+    // (title is draw here as well because of the fade out animation when stepping away from the ATM requiring it)
+    draw.DrawText("ATM - MoneyBank™", "HyllestedMoney:MainFont", ATM_UI_WIDTH / 2, ATM_UI_PADDING_Y, WHITE, TEXT_ALIGN_CENTER)
+
+    -- Draw account page button
+    surface.SetDrawColor(isHoveringAccountButton and ATM_GREY_BUTTON_COLOR_DARK or ATM_GREY_BUTTON_COLOR)
+    surface.DrawRect(accountPageButtonX, accountPageButtonY, ATM_UI_WIDTH - ATM_UI_PADDING_X * 2, ATM_MENU_BUTTON_HEIGHT)
+    draw.DrawText("Account", "HyllestedMoney:MainFontSmall", ATM_UI_WIDTH / 2, accountPageButtonY + (ATM_MENU_BUTTON_HEIGHT - FONT_HEIGHT_SMALL) / 2, WHITE, TEXT_ALIGN_CENTER)
+
+    -- Draw transfer page button
+    surface.SetDrawColor(isHoveringTransferButton and ATM_GREY_BUTTON_COLOR_DARK or ATM_GREY_BUTTON_COLOR)
+    surface.DrawRect(transferPageButtonX, transferPageButtonY, ATM_UI_WIDTH - ATM_UI_PADDING_X * 2, ATM_MENU_BUTTON_HEIGHT)
+    draw.DrawText("Transfer", "HyllestedMoney:MainFontSmall", ATM_UI_WIDTH / 2, transferPageButtonY + (ATM_MENU_BUTTON_HEIGHT - FONT_HEIGHT_SMALL) / 2, WHITE, TEXT_ALIGN_CENTER)
+
+    -- Draw history page button
+    surface.SetDrawColor(isHoveringHistoryButton and ATM_GREY_BUTTON_COLOR_DARK or ATM_GREY_BUTTON_COLOR)
+    surface.DrawRect(historyPageButtonX, historyPageButtonY, ATM_UI_WIDTH - ATM_UI_PADDING_X * 2, ATM_MENU_BUTTON_HEIGHT)
+    draw.DrawText("History", "HyllestedMoney:MainFontSmall", ATM_UI_WIDTH / 2, historyPageButtonY + (ATM_MENU_BUTTON_HEIGHT - FONT_HEIGHT_SMALL) / 2, WHITE, TEXT_ALIGN_CENTER)
+
+    self:AddButton(accountPageButtonX, accountPageButtonY, ATM_UI_WIDTH - ATM_UI_PADDING_X * 2, ATM_MENU_BUTTON_HEIGHT, function()
+        self:FadeToPage( ACCOUNT_PAGE )
+    end)
+
+    self:AddButton(transferPageButtonX, transferPageButtonY, ATM_UI_WIDTH - ATM_UI_PADDING_X * 2, ATM_MENU_BUTTON_HEIGHT, function()
+        self:FadeToPage( TRANSFER_PAGE )
+    end)
+
+    self:AddButton(historyPageButtonX, historyPageButtonY, ATM_UI_WIDTH - ATM_UI_PADDING_X * 2, ATM_MENU_BUTTON_HEIGHT, function()
+        self:FadeToPage( HISTORY_PAGE )
+        self:UpdateHistory() -- Requests updated transfer history data
+    end)
+end
+
+function ENT:DrawAccountPage()
+    local client = LocalPlayer()
+
+    local leftArrowPositionX = ATM_UI_PADDING_X
+    local rightArrowPositionX = ATM_UI_WIDTH - ATM_UI_PADDING_X - ATM_ARROW_BUTTON_WIDTH
+    local arrowPositionY = ATM_UI_PADDING_Y + FONT_HEIGHT * 2 + ATM_LINE_PADDING * 5
+
+    local depositButtonPositionX = ATM_UI_PADDING_X
+    local withdrawButtonPositionX = ATM_UI_WIDTH / 2 + ATM_BUTTON_PADDING / 2
+    local transferButtonPositionY = arrowPositionY + ATM_ARROW_BUTTON_HEIGHT + ATM_LINE_PADDING
+    local transferButtonWidth = ATM_UI_WIDTH / 2 - ATM_UI_PADDING_X - ATM_BUTTON_PADDING / 2
+
+    local isHoveringLeftArrow = imgui.IsHovering(leftArrowPositionX, arrowPositionY, ATM_ARROW_BUTTON_WIDTH, ATM_ARROW_BUTTON_HEIGHT)
+    local isHoveringRightArrow = imgui.IsHovering(rightArrowPositionX, arrowPositionY, ATM_ARROW_BUTTON_WIDTH, ATM_ARROW_BUTTON_HEIGHT)
+    local isHoveringDeposit = imgui.IsHovering(depositButtonPositionX,transferButtonPositionY, transferButtonWidth, ATM_TRANSFER_BUTTON_HEIGHT)
+    local isHoveringWithdraw = imgui.IsHovering(withdrawButtonPositionX,transferButtonPositionY, transferButtonWidth, ATM_TRANSFER_BUTTON_HEIGHT)
+
+    // ATM title and current balance (title is draw here as well because of the fade out animation when stepping away from the ATM requiring it)
+    draw.DrawText("ATM - MoneyBank™", "HyllestedMoney:MainFont", ATM_UI_WIDTH / 2, ATM_UI_PADDING_Y, WHITE, TEXT_ALIGN_CENTER)
+    draw.DrawText("Current Balance:", "HyllestedMoney:MainFontSmall", ATM_UI_PADDING_X, ATM_UI_PADDING_Y + FONT_HEIGHT + FONT_HEIGHT_SMALL / 2, WHITE, TEXT_ALIGN_LEFT)
+    draw.DrawText(string.format("$%.2f",client:GetNWInt("bankBalance")), "HyllestedMoney:MainFont",ATM_UI_WIDTH - ATM_UI_PADDING_X, ATM_UI_PADDING_Y + FONT_HEIGHT, GREEN,TEXT_ALIGN_RIGHT)
+
+    // This draws the left and right arrow buttons for adjusting amount deposited/withdrawn
+    surface.SetDrawColor(isHoveringLeftArrow and ATM_GREY_BUTTON_COLOR_DARK or ATM_GREY_BUTTON_COLOR)
+    surface.DrawRect(leftArrowPositionX, arrowPositionY, ATM_ARROW_BUTTON_WIDTH, ATM_ARROW_BUTTON_HEIGHT)
+
+    surface.SetDrawColor(isHoveringRightArrow and ATM_GREY_BUTTON_COLOR_DARK or ATM_GREY_BUTTON_COLOR)
+    surface.DrawRect(rightArrowPositionX, arrowPositionY, ATM_ARROW_BUTTON_WIDTH, ATM_ARROW_BUTTON_HEIGHT)
+
+    // This draws the arrows themselves in the buttons drawn above
+    draw.DrawText("<", "HyllestedMoney:MainFont", leftArrowPositionX + ATM_ARROW_BUTTON_WIDTH / 2, arrowPositionY + (ATM_ARROW_BUTTON_HEIGHT - FONT_HEIGHT) / 2, WHITE, TEXT_ALIGN_CENTER)
+    draw.DrawText(">", "HyllestedMoney:MainFont", rightArrowPositionX + ATM_ARROW_BUTTON_WIDTH / 2, arrowPositionY + (ATM_ARROW_BUTTON_HEIGHT - FONT_HEIGHT) / 2, WHITE, TEXT_ALIGN_CENTER)
+
+    // This fills the space between the 2 arrow buttons
+    surface.SetDrawColor(DARK_GREY)
+    surface.DrawRect(leftArrowPositionX + ATM_ARROW_BUTTON_WIDTH, arrowPositionY, rightArrowPositionX - leftArrowPositionX - ATM_ARROW_BUTTON_WIDTH, ATM_ARROW_BUTTON_HEIGHT)
+
+    // This draws the current amount being deposited/withdrawn into the space drawn above
+    draw.DrawText(string.format("$%.2f",self.increment),"HyllestedMoney:MainFont", ATM_UI_WIDTH / 2, arrowPositionY + (ATM_ARROW_BUTTON_HEIGHT - FONT_HEIGHT) / 2, WHITE, TEXT_ALIGN_CENTER)
+
+    // This draws the deposit and withdraw buttons
+    surface.SetDrawColor(isHoveringDeposit and GREEN_DARK or GREEN)
+    surface.DrawRect(depositButtonPositionX, transferButtonPositionY, transferButtonWidth, ATM_TRANSFER_BUTTON_HEIGHT)
+
+    surface.SetDrawColor(isHoveringWithdraw and GREEN_DARK or GREEN)
+    surface.DrawRect(withdrawButtonPositionX, transferButtonPositionY, transferButtonWidth, ATM_TRANSFER_BUTTON_HEIGHT)
+
+    // This draws the text for the deposit and withdraw buttons
+    draw.DrawText("Deposit","HyllestedMoney:MainFontSmall",depositButtonPositionX + transferButtonWidth / 2, transferButtonPositionY + (ATM_TRANSFER_BUTTON_HEIGHT - FONT_HEIGHT_SMALL) / 2, WHITE, TEXT_ALIGN_CENTER)
+    draw.DrawText("Withdraw","HyllestedMoney:MainFontSmall",withdrawButtonPositionX + transferButtonWidth / 2, transferButtonPositionY + (ATM_TRANSFER_BUTTON_HEIGHT - FONT_HEIGHT_SMALL) / 2, WHITE, TEXT_ALIGN_CENTER)
+
+    self:AddButton(leftArrowPositionX, arrowPositionY, ATM_ARROW_BUTTON_WIDTH, ATM_ARROW_BUTTON_HEIGHT, function()
+        self:IncrementKey(-1, "increment", 1, 2^32)
+    end)
+
+    self:AddButton(rightArrowPositionX, arrowPositionY, ATM_ARROW_BUTTON_WIDTH, ATM_ARROW_BUTTON_HEIGHT, function()
+        self:IncrementKey(1, "increment", 1, 2^32)
+    end)
+
+    self:AddButton(depositButtonPositionX, transferButtonPositionY, transferButtonWidth, ATM_TRANSFER_BUTTON_HEIGHT, function()
+        self:DoTransfer( TRANSFER_DEPOSIT )
+    end)
+
+    self:AddButton(withdrawButtonPositionX, transferButtonPositionY, transferButtonWidth, ATM_TRANSFER_BUTTON_HEIGHT, function()
+        self:DoTransfer( TRANSFER_WITHDRAW )
+    end)
+end
+
+function ENT:DrawTransferPage()
+    local client = LocalPlayer()
+
+    local leftArrowPositionX = ATM_UI_PADDING_X
+    local rightArrowPositionX = ATM_UI_WIDTH - ATM_UI_PADDING_X - ATM_ARROW_BUTTON_WIDTH
+    local arrowPositionY = ATM_UI_PADDING_Y + FONT_HEIGHT * 2 + ATM_LINE_PADDING
+
+    local targetEntryPositionX = ATM_UI_PADDING_X
+    local targetEntryPositionY = arrowPositionY + ATM_ARROW_BUTTON_HEIGHT + ATM_LINE_PADDING
+
+    local targetEditButtonPositionX = ATM_UI_WIDTH - ATM_UI_PADDING_X - ATM_ARROW_BUTTON_WIDTH
+
+    local transferButtonPositionX = ATM_UI_PADDING_X
+    local transferButtonPositionY = targetEntryPositionY + ATM_ARROW_BUTTON_HEIGHT + ATM_LINE_PADDING
+    local transferButtonWidth = ATM_UI_WIDTH - ATM_UI_PADDING_X * 2
+
+    local isHoveringLeftArrow = imgui.IsHovering(leftArrowPositionX, arrowPositionY, ATM_ARROW_BUTTON_WIDTH, ATM_ARROW_BUTTON_HEIGHT)
+    local isHoveringRightArrow = imgui.IsHovering(rightArrowPositionX, arrowPositionY, ATM_ARROW_BUTTON_WIDTH, ATM_ARROW_BUTTON_HEIGHT)
+    local isHoveringTargetEdit = imgui.IsHovering(targetEditButtonPositionX, targetEntryPositionY, ATM_ARROW_BUTTON_WIDTH, ATM_ARROW_BUTTON_HEIGHT)
+    local isHoveringTransfer = imgui.IsHovering(transferButtonPositionX,transferButtonPositionY, transferButtonWidth, ATM_TRANSFER_BUTTON_HEIGHT)
+
+    // ATM title and current balance (title is draw here as well because of the fade out animation when stepping away from the ATM requiring it)
+    draw.DrawText("ATM - MoneyBank™", "HyllestedMoney:MainFont", ATM_UI_WIDTH / 2, ATM_UI_PADDING_Y, WHITE, TEXT_ALIGN_CENTER)
+    draw.DrawText("Current Balance:", "HyllestedMoney:MainFontSmall", ATM_UI_PADDING_X, ATM_UI_PADDING_Y + FONT_HEIGHT + FONT_HEIGHT_SMALL / 2, WHITE, TEXT_ALIGN_LEFT)
+    draw.DrawText(string.format("$%.2f",client:GetNWInt("bankBalance")), "HyllestedMoney:MainFont",ATM_UI_WIDTH - ATM_UI_PADDING_X, ATM_UI_PADDING_Y + FONT_HEIGHT, GREEN,TEXT_ALIGN_RIGHT)
+
+    // This draws the left and right arrow buttons for adjusting amount deposited/withdrawn
+    surface.SetDrawColor(isHoveringLeftArrow and ATM_GREY_BUTTON_COLOR_DARK or ATM_GREY_BUTTON_COLOR)
+    surface.DrawRect(leftArrowPositionX, arrowPositionY, ATM_ARROW_BUTTON_WIDTH, ATM_ARROW_BUTTON_HEIGHT)
+
+    surface.SetDrawColor(isHoveringRightArrow and ATM_GREY_BUTTON_COLOR_DARK or ATM_GREY_BUTTON_COLOR)
+    surface.DrawRect(rightArrowPositionX, arrowPositionY, ATM_ARROW_BUTTON_WIDTH, ATM_ARROW_BUTTON_HEIGHT)
+
+    // This draws the arrows themselves in the buttons drawn above
+    draw.DrawText("<", "HyllestedMoney:MainFont", leftArrowPositionX + ATM_ARROW_BUTTON_WIDTH / 2, arrowPositionY + (ATM_ARROW_BUTTON_HEIGHT - FONT_HEIGHT) / 2, WHITE, TEXT_ALIGN_CENTER)
+    draw.DrawText(">", "HyllestedMoney:MainFont", rightArrowPositionX + ATM_ARROW_BUTTON_WIDTH / 2, arrowPositionY + (ATM_ARROW_BUTTON_HEIGHT - FONT_HEIGHT) / 2, WHITE, TEXT_ALIGN_CENTER)
+
+    // This fills the space between the 2 arrow buttons
+    surface.SetDrawColor(DARK_GREY)
+    surface.DrawRect(leftArrowPositionX + ATM_ARROW_BUTTON_WIDTH, arrowPositionY, rightArrowPositionX - leftArrowPositionX - ATM_ARROW_BUTTON_WIDTH, ATM_ARROW_BUTTON_HEIGHT)
+
+    // This draws the current amount being deposited/withdrawn into the space drawn above
+    draw.DrawText(string.format("$%.2f",self.increment),"HyllestedMoney:MainFont", ATM_UI_WIDTH / 2, arrowPositionY + (ATM_ARROW_BUTTON_HEIGHT - FONT_HEIGHT) / 2, WHITE, TEXT_ALIGN_CENTER)
+
+    // This draws the UI for selected the target for the transfer
+    surface.SetDrawColor(DARK_GREY)
+    surface.DrawRect(targetEntryPositionX, targetEntryPositionY, ATM_UI_WIDTH - ATM_UI_PADDING_X * 2 - ATM_ARROW_BUTTON_WIDTH, ATM_ARROW_BUTTON_HEIGHT)
+
+    draw.DrawText(self.transferTarget, "HyllestedMoney:MainFontSmall", targetEntryPositionX + (ATM_UI_WIDTH - ATM_UI_PADDING_X * 2 - ATM_ARROW_BUTTON_WIDTH) / 2, targetEntryPositionY + (ATM_ARROW_BUTTON_HEIGHT - FONT_HEIGHT_SMALL) / 2, WHITE, TEXT_ALIGN_CENTER)
+
+    // This draws the edit button for the transfer target
+    surface.SetDrawColor(isHoveringTargetEdit and ATM_GREY_BUTTON_COLOR_DARK or ATM_GREY_BUTTON_COLOR)
+    surface.DrawRect(targetEditButtonPositionX, targetEntryPositionY, ATM_ARROW_BUTTON_WIDTH, ATM_ARROW_BUTTON_HEIGHT)
+
+    // This fills said edit button with text
+    draw.DrawText("...","HyllestedMoney:MainFontSmall", targetEditButtonPositionX + ATM_ARROW_BUTTON_WIDTH / 2, targetEntryPositionY + (ATM_ARROW_BUTTON_HEIGHT - FONT_HEIGHT_SMALL) / 2, WHITE, TEXT_ALIGN_CENTER)
+
+    // This draws the transfer button
+    surface.SetDrawColor(isHoveringTransfer and GREEN_DARK or GREEN)
+    surface.DrawRect(transferButtonPositionX, transferButtonPositionY, transferButtonWidth, ATM_TRANSFER_BUTTON_HEIGHT)
+
+    // This draws the text for the transfer button
+    draw.DrawText("Transfer","HyllestedMoney:MainFontSmall", ATM_UI_WIDTH / 2, transferButtonPositionY + (ATM_TRANSFER_BUTTON_HEIGHT - FONT_HEIGHT_SMALL) / 2, WHITE, TEXT_ALIGN_CENTER)
+
+    self:AddButton(targetEditButtonPositionX, targetEntryPositionY, ATM_ARROW_BUTTON_WIDTH, ATM_ARROW_BUTTON_HEIGHT, function()
+        self:OpenTransferSelectionMenu()
+    end)
+
+    self:AddButton(leftArrowPositionX, arrowPositionY, ATM_ARROW_BUTTON_WIDTH, ATM_ARROW_BUTTON_HEIGHT, function()
+        self:IncrementKey(-1, "increment", 1, 2^32)
+    end)
+
+    self:AddButton(rightArrowPositionX, arrowPositionY, ATM_ARROW_BUTTON_WIDTH, ATM_ARROW_BUTTON_HEIGHT, function()
+        self:IncrementKey(1, "increment", 1, 2^32)
+    end)
+
+    self:AddButton(transferButtonPositionX, transferButtonPositionY, transferButtonWidth, ATM_TRANSFER_BUTTON_HEIGHT, function()
+        if self.transferTarget == "" then
+            -- Doesn't used DarkRP method as it is server only
+            notification.AddLegacy( "No Transfer recipient selected!", NOTIFY_ERROR, 5 )
+            return
+        end
+
+        self:OpenTransferConfirmMenu()
+    end)
+end
+
+function ENT:DrawHistoryPage()
+    local client = LocalPlayer()
+
+    // (title is draw here as well because of the fade out animation when stepping away from the ATM requiring it)
+    draw.DrawText("ATM - MoneyBank™", "HyllestedMoney:MainFont", ATM_UI_WIDTH / 2, ATM_UI_PADDING_Y, WHITE, TEXT_ALIGN_CENTER)
+
+    draw.DrawText("Amount      -      Account      -      Time", "HyllestedMoney:MainFontSmall", ATM_UI_WIDTH / 2, ATM_UI_PADDING_Y + FONT_HEIGHT, WHITE, TEXT_ALIGN_CENTER)
+    surface.SetDrawColor(WHITE)
+    surface.DrawRect(ATM_UI_PADDING_X, ATM_UI_PADDING_Y + FONT_HEIGHT + FONT_HEIGHT_SMALL, ATM_UI_WIDTH - ATM_UI_PADDING_X * 2, 1)
+
+    for row, data in pairs(self.historyData) do
+        local isNegative = tonumber(data.amount) < 0
+        local amount = (isNegative and "-" or "+") .. string.format("$%d",math.abs(data.amount))
+        draw.DrawText(amount, "HyllestedMoney:MainFontSmall", ATM_UI_PADDING_X, ATM_UI_PADDING_Y + FONT_HEIGHT + (FONT_HEIGHT_SMALL + ATM_LINE_PADDING) * row, isNegative and RED or GREEN, TEXT_ALIGN_LEFT)
+        draw.DrawText(data.toFrom, "HyllestedMoney:MainFontSmall", ATM_UI_WIDTH / 2, ATM_UI_PADDING_Y + FONT_HEIGHT + (FONT_HEIGHT_SMALL + ATM_LINE_PADDING) * row, WHITE, TEXT_ALIGN_CENTER)
+        draw.DrawText(FormatTime(data.timestamp), "HyllestedMoney:MainFontSmall", ATM_UI_WIDTH - ATM_UI_PADDING_X, ATM_UI_PADDING_Y + FONT_HEIGHT + (FONT_HEIGHT_SMALL + ATM_LINE_PADDING) * row, WHITE, TEXT_ALIGN_RIGHT)
+    end
+
+    local leftArrowPositionX = ATM_UI_PADDING_X
+    local rightArrowPositionX = ATM_UI_WIDTH - ATM_UI_PADDING_X - ATM_ARROW_BUTTON_WIDTH
+    local arrowPositionY = ATM_UI_PADDING_Y + FONT_HEIGHT + (FONT_HEIGHT_SMALL + ATM_LINE_PADDING) * (#self.historyData + 1)
+
+    local isHoveringLeftArrow = imgui.IsHovering(leftArrowPositionX, arrowPositionY, ATM_ARROW_BUTTON_WIDTH, ATM_ARROW_BUTTON_HEIGHT)
+    local isHoveringRightArrow = imgui.IsHovering(rightArrowPositionX, arrowPositionY, ATM_ARROW_BUTTON_WIDTH, ATM_ARROW_BUTTON_HEIGHT)
+
+    // This draws the left and right arrow buttons for adjusting amount deposited/withdrawn
+    surface.SetDrawColor(isHoveringLeftArrow and ATM_GREY_BUTTON_COLOR_DARK or ATM_GREY_BUTTON_COLOR)
+    surface.DrawRect(leftArrowPositionX, arrowPositionY, ATM_ARROW_BUTTON_WIDTH, ATM_ARROW_BUTTON_HEIGHT)
+
+    surface.SetDrawColor(isHoveringRightArrow and ATM_GREY_BUTTON_COLOR_DARK or ATM_GREY_BUTTON_COLOR)
+    surface.DrawRect(rightArrowPositionX, arrowPositionY, ATM_ARROW_BUTTON_WIDTH, ATM_ARROW_BUTTON_HEIGHT)
+
+    // This draws the arrows themselves in the buttons drawn above
+    draw.DrawText("<", "HyllestedMoney:MainFont", leftArrowPositionX + ATM_ARROW_BUTTON_WIDTH / 2, arrowPositionY + (ATM_ARROW_BUTTON_HEIGHT - FONT_HEIGHT) / 2, WHITE, TEXT_ALIGN_CENTER)
+    draw.DrawText(">", "HyllestedMoney:MainFont", rightArrowPositionX + ATM_ARROW_BUTTON_WIDTH / 2, arrowPositionY + (ATM_ARROW_BUTTON_HEIGHT - FONT_HEIGHT) / 2, WHITE, TEXT_ALIGN_CENTER)
+
+    // This fills the space between the 2 arrow buttons
+    surface.SetDrawColor(DARK_GREY)
+    surface.DrawRect(leftArrowPositionX + ATM_ARROW_BUTTON_WIDTH, arrowPositionY, rightArrowPositionX - leftArrowPositionX - ATM_ARROW_BUTTON_WIDTH, ATM_ARROW_BUTTON_HEIGHT)
+
+    // This displays the current page number
+    draw.DrawText("Page " .. tostring(self.historyPage + 1), "HyllestedMoney:MainFontSmall", ATM_UI_WIDTH / 2, arrowPositionY + (ATM_ARROW_BUTTON_HEIGHT - FONT_HEIGHT_SMALL) / 2, WHITE, TEXT_ALIGN_CENTER)
+
+    self:AddButton(leftArrowPositionX, arrowPositionY, ATM_ARROW_BUTTON_WIDTH, ATM_ARROW_BUTTON_HEIGHT, function()
+        self:IncrementKey( -1, "historyPage", 0, 2^32-1 )
+        self:UpdateHistory()
+    end)
+
+    self:AddButton(rightArrowPositionX, arrowPositionY, ATM_ARROW_BUTTON_WIDTH, ATM_ARROW_BUTTON_HEIGHT, function()
+        self:IncrementKey( 1, "historyPage", 0, 2^32-1 )
+        self:UpdateHistory()
+    end)
+end
+
+function ENT:DrawBackArrow()
+    local backButtonX = 5
+    local backButtonY = 5
+    local backButtonWidth = 25
+    local backButtonHeight = 25
+
+    local isHoveringBackButton = imgui.IsHovering(backButtonX, backButtonY, backButtonWidth, backButtonHeight)
+
+    surface.SetDrawColor(isHoveringBackButton and ATM_GREY_BUTTON_COLOR_DARK or ATM_GREY_BUTTON_COLOR)
+    surface.DrawRect(backButtonX, backButtonY, backButtonWidth, backButtonHeight)
+    draw.DrawText("<", "HyllestedMoney:MainFontSmall", backButtonX + backButtonWidth / 2, backButtonY + (backButtonHeight - FONT_HEIGHT_SMALL) / 2, WHITE, TEXT_ALIGN_CENTER)
+
+    self:AddButton(backButtonX, backButtonY, backButtonWidth, backButtonHeight, function()
+        self:FadeToPage( MAIN_PAGE )
+    end)
+end
+
+function ENT:DrawFadeAnimation()
+    local timePassed = CurTime() - self.pageFadeAnimation.startTime
+    local timeFraction = math.min(timePassed / self.pageFadeAnimation.duration, 1)
+
+    local fadeColor = nil
+    if timeFraction <= 0.5 then -- If we are currently fading out
+        local timeEased = CubicEase(timeFraction*2)
+        fadeColor = TRANSPARENT_ATM_BACKDROP_COLOR:Lerp(ATM_BACKDROP_COLOR, timeEased)
+    else -- If we are current fading in
+        self.page = self.pageFadeAnimation.fadeTo
+
+        local timeEased = CubicEase((timeFraction-0.5)*2)
+        fadeColor = ATM_BACKDROP_COLOR:Lerp(TRANSPARENT_ATM_BACKDROP_COLOR, timeEased)
+
+        local animationEnded = timeFraction == 1
+        if animationEnded then
+            self.pageFadeAnimation.active = false
+        end
+    end
+    
+    surface.SetDrawColor(fadeColor)
+    surface.DrawRect(0, 0, ATM_UI_WIDTH, ATM_UI_HEIGHT)
 end
 
 function ENT:DrawTranslucent()
@@ -172,368 +528,39 @@ function ENT:DrawTranslucent()
     local distance = client:GetPos():Distance(self:GetPos())
 
     if imgui.Entity3D2D(self, Vector(1, -20.15, 23.75), Angle(0, 90, 85), 0.1) then // These values would need to be adjusted depending on the model used.
-        local buttons = {}
+        self.buttons = {}
 
         // Drawing the monitor backdrop
         surface.SetDrawColor(ATM_BACKDROP_COLOR)
         surface.DrawRect(0, 0, ATM_UI_WIDTH, ATM_UI_HEIGHT)
         if self.page == FRONT_PAGE then
-            local labelPositionY = ATM_UI_HEIGHT / 2 - FONT_HEIGHT
-            local subtextColor = WHITE
-
-            if self.startupAnimation.active then
-                local timePassed = CurTime() - self.startupAnimation.startTime
-                local timeFraction = math.min(timePassed / self.startupAnimation.duration, 1)
-                local timeEased = CubicEase(timeFraction)
-
-                subtextColor = WHITE:Lerp(TRANSPARENT_WHITE, timeEased)
-                labelPositionY = math.max(labelPositionY - (labelPositionY - ATM_UI_PADDING_Y) * timeEased, ATM_UI_PADDING_Y)
-
-                local animationEnded = timeFraction == 1
-                if animationEnded then
-                    self.startupAnimation.active = false
-                    self.active = true
-                    self.pageFadeAnimation.active = true
-                    self.pageFadeAnimation.startTime = CurTime()
-                    self.pageFadeAnimation.fadeTo = MAIN_PAGE
-                end
-            end
-
-            if not self.active then
-                draw.DrawText("ATM - MoneyBank™", "HyllestedMoney:MainFont", ATM_UI_WIDTH / 2, labelPositionY, WHITE, TEXT_ALIGN_CENTER)
-                draw.DrawText("Touch to Begin", "HyllestedMoney:MainFontSmall", ATM_UI_WIDTH / 2, labelPositionY + FONT_HEIGHT, subtextColor, TEXT_ALIGN_CENTER)
-
-                table.insert(buttons, {x = 0, y = 0, w = ATM_UI_WIDTH, h = ATM_UI_HEIGHT, callback = function()
-                    if not self.startupAnimation.active then
-                        self.startupAnimation.active = true 
-                        self.startupAnimation.startTime = CurTime()
-                    end
-                end})
-            end
+            self:DrawFrontPage()
         elseif self.page == MAIN_PAGE then
-            local accountPageButtonX = ATM_UI_PADDING_X
-            local transferPageButtonX = ATM_UI_PADDING_X
-            local historyPageButtonX = ATM_UI_PADDING_X
-
-            local accountPageButtonY = ATM_UI_PADDING_Y + FONT_HEIGHT + ATM_LINE_PADDING
-            local transferPageButtonY = accountPageButtonY + ATM_MENU_BUTTON_HEIGHT + ATM_LINE_PADDING
-            local historyPageButtonY = transferPageButtonY + ATM_MENU_BUTTON_HEIGHT + ATM_LINE_PADDING
-
-            local isHoveringAccountButton = imgui.IsHovering(accountPageButtonX, accountPageButtonY, ATM_UI_WIDTH - ATM_UI_PADDING_X * 2, ATM_MENU_BUTTON_HEIGHT)
-            local isHoveringTransferButton = imgui.IsHovering(transferPageButtonX, transferPageButtonY, ATM_UI_WIDTH - ATM_UI_PADDING_X * 2, ATM_MENU_BUTTON_HEIGHT)
-            local isHoveringHistoryButton = imgui.IsHovering(historyPageButtonX, historyPageButtonY, ATM_UI_WIDTH - ATM_UI_PADDING_X * 2, ATM_MENU_BUTTON_HEIGHT)
-
-            // (title is draw here as well because of the fade out animation when stepping away from the ATM requiring it)
-            draw.DrawText("ATM - MoneyBank™", "HyllestedMoney:MainFont", ATM_UI_WIDTH / 2, ATM_UI_PADDING_Y, WHITE, TEXT_ALIGN_CENTER)
-
-            -- Draw account page button
-            surface.SetDrawColor(isHoveringAccountButton and ATM_GREY_BUTTON_COLOR_DARK or ATM_GREY_BUTTON_COLOR)
-            surface.DrawRect(accountPageButtonX, accountPageButtonY, ATM_UI_WIDTH - ATM_UI_PADDING_X * 2, ATM_MENU_BUTTON_HEIGHT)
-            draw.DrawText("Account", "HyllestedMoney:MainFontSmall", ATM_UI_WIDTH / 2, accountPageButtonY + (ATM_MENU_BUTTON_HEIGHT - FONT_HEIGHT_SMALL) / 2, WHITE, TEXT_ALIGN_CENTER)
-
-            -- Draw transfer page button
-            surface.SetDrawColor(isHoveringTransferButton and ATM_GREY_BUTTON_COLOR_DARK or ATM_GREY_BUTTON_COLOR)
-            surface.DrawRect(transferPageButtonX, transferPageButtonY, ATM_UI_WIDTH - ATM_UI_PADDING_X * 2, ATM_MENU_BUTTON_HEIGHT)
-            draw.DrawText("Transfer", "HyllestedMoney:MainFontSmall", ATM_UI_WIDTH / 2, transferPageButtonY + (ATM_MENU_BUTTON_HEIGHT - FONT_HEIGHT_SMALL) / 2, WHITE, TEXT_ALIGN_CENTER)
-
-            -- Draw history page button
-            surface.SetDrawColor(isHoveringHistoryButton and ATM_GREY_BUTTON_COLOR_DARK or ATM_GREY_BUTTON_COLOR)
-            surface.DrawRect(historyPageButtonX, historyPageButtonY, ATM_UI_WIDTH - ATM_UI_PADDING_X * 2, ATM_MENU_BUTTON_HEIGHT)
-            draw.DrawText("History", "HyllestedMoney:MainFontSmall", ATM_UI_WIDTH / 2, historyPageButtonY + (ATM_MENU_BUTTON_HEIGHT - FONT_HEIGHT_SMALL) / 2, WHITE, TEXT_ALIGN_CENTER)
-
-            table.insert(buttons, {x = accountPageButtonX, y = accountPageButtonY, w = ATM_UI_WIDTH - ATM_UI_PADDING_X * 2, h = ATM_MENU_BUTTON_HEIGHT, callback = function()
-                if not self.pageFadeAnimation.active then
-                    self.pageFadeAnimation.active = true 
-                    self.pageFadeAnimation.startTime = CurTime()
-                    self.pageFadeAnimation.fadeTo = ACCOUNT_PAGE
-                end
-            end})
-
-            table.insert(buttons, {x = transferPageButtonX, y = transferPageButtonY, w = ATM_UI_WIDTH - ATM_UI_PADDING_X * 2, h = ATM_MENU_BUTTON_HEIGHT, callback = function()
-                if not self.pageFadeAnimation.active then
-                    self.pageFadeAnimation.active = true 
-                    self.pageFadeAnimation.startTime = CurTime()
-                    self.pageFadeAnimation.fadeTo = TRANSFER_PAGE
-                end
-            end})
-
-            table.insert(buttons, {x = historyPageButtonX, y = historyPageButtonY, w = ATM_UI_WIDTH - ATM_UI_PADDING_X * 2, h = ATM_MENU_BUTTON_HEIGHT, callback = function()
-                if not self.pageFadeAnimation.active then
-                    self.pageFadeAnimation.active = true 
-                    self.pageFadeAnimation.startTime = CurTime()
-                    self.pageFadeAnimation.fadeTo = HISTORY_PAGE
-                    self.updateHistory = true -- Signals that the client should request transfer data next frame
-                end
-            end})
+            self:DrawMainPage()
         elseif self.page == ACCOUNT_PAGE then
-            local leftArrowPositionX = ATM_UI_PADDING_X
-            local rightArrowPositionX = ATM_UI_WIDTH - ATM_UI_PADDING_X - ATM_ARROW_BUTTON_WIDTH
-            local arrowPositionY = ATM_UI_PADDING_Y + FONT_HEIGHT * 2 + ATM_LINE_PADDING * 5
-
-            local depositButtonPositionX = ATM_UI_PADDING_X
-            local withdrawButtonPositionX = ATM_UI_WIDTH / 2 + ATM_BUTTON_PADDING / 2
-            local transferButtonPositionY = arrowPositionY + ATM_ARROW_BUTTON_HEIGHT + ATM_LINE_PADDING
-            local transferButtonWidth = ATM_UI_WIDTH / 2 - ATM_UI_PADDING_X - ATM_BUTTON_PADDING / 2
-
-            local isHoveringLeftArrow = imgui.IsHovering(leftArrowPositionX, arrowPositionY, ATM_ARROW_BUTTON_WIDTH, ATM_ARROW_BUTTON_HEIGHT)
-            local isHoveringRightArrow = imgui.IsHovering(rightArrowPositionX, arrowPositionY, ATM_ARROW_BUTTON_WIDTH, ATM_ARROW_BUTTON_HEIGHT)
-            local isHoveringDeposit = imgui.IsHovering(depositButtonPositionX,transferButtonPositionY, transferButtonWidth, ATM_TRANSFER_BUTTON_HEIGHT)
-            local isHoveringWithdraw = imgui.IsHovering(withdrawButtonPositionX,transferButtonPositionY, transferButtonWidth, ATM_TRANSFER_BUTTON_HEIGHT)
-
-            // ATM title and current balance (title is draw here as well because of the fade out animation when stepping away from the ATM requiring it)
-            draw.DrawText("ATM - MoneyBank™", "HyllestedMoney:MainFont", ATM_UI_WIDTH / 2, ATM_UI_PADDING_Y, WHITE, TEXT_ALIGN_CENTER)
-            draw.DrawText("Current Balance:", "HyllestedMoney:MainFontSmall", ATM_UI_PADDING_X, ATM_UI_PADDING_Y + FONT_HEIGHT + FONT_HEIGHT_SMALL / 2, WHITE, TEXT_ALIGN_LEFT)
-            draw.DrawText(string.format("$%.2f",client:GetNWInt("bankBalance")), "HyllestedMoney:MainFont",ATM_UI_WIDTH - ATM_UI_PADDING_X, ATM_UI_PADDING_Y + FONT_HEIGHT, GREEN,TEXT_ALIGN_RIGHT)
-
-            // This draws the left and right arrow buttons for adjusting amount deposited/withdrawn
-            surface.SetDrawColor(isHoveringLeftArrow and ATM_GREY_BUTTON_COLOR_DARK or ATM_GREY_BUTTON_COLOR)
-            surface.DrawRect(leftArrowPositionX, arrowPositionY, ATM_ARROW_BUTTON_WIDTH, ATM_ARROW_BUTTON_HEIGHT)
-
-            surface.SetDrawColor(isHoveringRightArrow and ATM_GREY_BUTTON_COLOR_DARK or ATM_GREY_BUTTON_COLOR)
-            surface.DrawRect(rightArrowPositionX, arrowPositionY, ATM_ARROW_BUTTON_WIDTH, ATM_ARROW_BUTTON_HEIGHT)
-
-            // This draws the arrows themselves in the buttons drawn above
-            draw.DrawText("<", "HyllestedMoney:MainFont", leftArrowPositionX + ATM_ARROW_BUTTON_WIDTH / 2, arrowPositionY + (ATM_ARROW_BUTTON_HEIGHT - FONT_HEIGHT) / 2, WHITE, TEXT_ALIGN_CENTER)
-            draw.DrawText(">", "HyllestedMoney:MainFont", rightArrowPositionX + ATM_ARROW_BUTTON_WIDTH / 2, arrowPositionY + (ATM_ARROW_BUTTON_HEIGHT - FONT_HEIGHT) / 2, WHITE, TEXT_ALIGN_CENTER)
-
-            // This fills the space between the 2 arrow buttons
-            surface.SetDrawColor(DARK_GREY)
-            surface.DrawRect(leftArrowPositionX + ATM_ARROW_BUTTON_WIDTH, arrowPositionY, rightArrowPositionX - leftArrowPositionX - ATM_ARROW_BUTTON_WIDTH, ATM_ARROW_BUTTON_HEIGHT)
-
-            // This draws the current amount being deposited/withdrawn into the space drawn above
-            draw.DrawText(string.format("$%.2f",self.increment),"HyllestedMoney:MainFont", ATM_UI_WIDTH / 2, arrowPositionY + (ATM_ARROW_BUTTON_HEIGHT - FONT_HEIGHT) / 2, WHITE, TEXT_ALIGN_CENTER)
-
-            // This draws the deposit and withdraw buttons
-            surface.SetDrawColor(isHoveringDeposit and GREEN_DARK or GREEN)
-            surface.DrawRect(depositButtonPositionX, transferButtonPositionY, transferButtonWidth, ATM_TRANSFER_BUTTON_HEIGHT)
-
-            surface.SetDrawColor(isHoveringWithdraw and GREEN_DARK or GREEN)
-            surface.DrawRect(withdrawButtonPositionX, transferButtonPositionY, transferButtonWidth, ATM_TRANSFER_BUTTON_HEIGHT)
-
-            // This draws the text for the deposit and withdraw buttons
-            draw.DrawText("Deposit","HyllestedMoney:MainFontSmall",depositButtonPositionX + transferButtonWidth / 2, transferButtonPositionY + (ATM_TRANSFER_BUTTON_HEIGHT - FONT_HEIGHT_SMALL) / 2, WHITE, TEXT_ALIGN_CENTER)
-            draw.DrawText("Withdraw","HyllestedMoney:MainFontSmall",withdrawButtonPositionX + transferButtonWidth / 2, transferButtonPositionY + (ATM_TRANSFER_BUTTON_HEIGHT - FONT_HEIGHT_SMALL) / 2, WHITE, TEXT_ALIGN_CENTER)
-
-            table.insert(buttons, {x = leftArrowPositionX, y = arrowPositionY, w = ATM_ARROW_BUTTON_WIDTH, h = ATM_ARROW_BUTTON_HEIGHT, callback = function()
-                local increment = input.IsShiftDown() and 10 or 1 -- Hold shift to change increment to 10 instead of 1
-                self.increment = math.max(self.increment - increment, 1) -- Lower limit is 1
-            end})
-
-            table.insert(buttons, {x = rightArrowPositionX, y = arrowPositionY, w = ATM_ARROW_BUTTON_WIDTH, h = ATM_ARROW_BUTTON_HEIGHT, callback = function()
-                local increment = input.IsShiftDown() and 10 or 1 -- Hold shift to change increment to 10 instead of 1
-                self.increment = math.min(self.increment + increment, 2^32) -- Upper limit is set by 32 bit limit
-            end})
-
-            table.insert(buttons, {x = depositButtonPositionX, y = transferButtonPositionY, w = transferButtonWidth, h = ATM_TRANSFER_BUTTON_HEIGHT, callback = function()
-                net.Start("HyllestedMoney:TransferMoney")
-                    net.WriteUInt(TRANSFER_DEPOSIT,1)
-                    net.WriteUInt(self.increment,32)
-                net.SendToServer()
-            end})
-
-            table.insert(buttons, {x = withdrawButtonPositionX, y = transferButtonPositionY, w = transferButtonWidth, h = ATM_TRANSFER_BUTTON_HEIGHT, callback = function()
-                net.Start("HyllestedMoney:TransferMoney")
-                    net.WriteUInt(TRANSFER_WITHDRAW,1)
-                    net.WriteUInt(self.increment,32)
-                net.SendToServer()
-            end})
+            self:DrawAccountPage()
         elseif self.page == TRANSFER_PAGE then
-            local leftArrowPositionX = ATM_UI_PADDING_X
-            local rightArrowPositionX = ATM_UI_WIDTH - ATM_UI_PADDING_X - ATM_ARROW_BUTTON_WIDTH
-            local arrowPositionY = ATM_UI_PADDING_Y + FONT_HEIGHT * 2 + ATM_LINE_PADDING
-
-            local targetEntryPositionX = ATM_UI_PADDING_X
-            local targetEntryPositionY = arrowPositionY + ATM_ARROW_BUTTON_HEIGHT + ATM_LINE_PADDING
-
-            local targetEditButtonPositionX = ATM_UI_WIDTH - ATM_UI_PADDING_X - ATM_ARROW_BUTTON_WIDTH
-
-            local transferButtonPositionX = ATM_UI_PADDING_X
-            local transferButtonPositionY = targetEntryPositionY + ATM_ARROW_BUTTON_HEIGHT + ATM_LINE_PADDING
-            local transferButtonWidth = ATM_UI_WIDTH - ATM_UI_PADDING_X * 2
-
-            local isHoveringLeftArrow = imgui.IsHovering(leftArrowPositionX, arrowPositionY, ATM_ARROW_BUTTON_WIDTH, ATM_ARROW_BUTTON_HEIGHT)
-            local isHoveringRightArrow = imgui.IsHovering(rightArrowPositionX, arrowPositionY, ATM_ARROW_BUTTON_WIDTH, ATM_ARROW_BUTTON_HEIGHT)
-            local isHoveringTargetEdit = imgui.IsHovering(targetEditButtonPositionX, targetEntryPositionY, ATM_ARROW_BUTTON_WIDTH, ATM_ARROW_BUTTON_HEIGHT)
-            local isHoveringTransfer = imgui.IsHovering(transferButtonPositionX,transferButtonPositionY, transferButtonWidth, ATM_TRANSFER_BUTTON_HEIGHT)
-
-            // ATM title and current balance (title is draw here as well because of the fade out animation when stepping away from the ATM requiring it)
-            draw.DrawText("ATM - MoneyBank™", "HyllestedMoney:MainFont", ATM_UI_WIDTH / 2, ATM_UI_PADDING_Y, WHITE, TEXT_ALIGN_CENTER)
-            draw.DrawText("Current Balance:", "HyllestedMoney:MainFontSmall", ATM_UI_PADDING_X, ATM_UI_PADDING_Y + FONT_HEIGHT + FONT_HEIGHT_SMALL / 2, WHITE, TEXT_ALIGN_LEFT)
-            draw.DrawText(string.format("$%.2f",client:GetNWInt("bankBalance")), "HyllestedMoney:MainFont",ATM_UI_WIDTH - ATM_UI_PADDING_X, ATM_UI_PADDING_Y + FONT_HEIGHT, GREEN,TEXT_ALIGN_RIGHT)
-
-            // This draws the left and right arrow buttons for adjusting amount deposited/withdrawn
-            surface.SetDrawColor(isHoveringLeftArrow and ATM_GREY_BUTTON_COLOR_DARK or ATM_GREY_BUTTON_COLOR)
-            surface.DrawRect(leftArrowPositionX, arrowPositionY, ATM_ARROW_BUTTON_WIDTH, ATM_ARROW_BUTTON_HEIGHT)
-
-            surface.SetDrawColor(isHoveringRightArrow and ATM_GREY_BUTTON_COLOR_DARK or ATM_GREY_BUTTON_COLOR)
-            surface.DrawRect(rightArrowPositionX, arrowPositionY, ATM_ARROW_BUTTON_WIDTH, ATM_ARROW_BUTTON_HEIGHT)
-
-            // This draws the arrows themselves in the buttons drawn above
-            draw.DrawText("<", "HyllestedMoney:MainFont", leftArrowPositionX + ATM_ARROW_BUTTON_WIDTH / 2, arrowPositionY + (ATM_ARROW_BUTTON_HEIGHT - FONT_HEIGHT) / 2, WHITE, TEXT_ALIGN_CENTER)
-            draw.DrawText(">", "HyllestedMoney:MainFont", rightArrowPositionX + ATM_ARROW_BUTTON_WIDTH / 2, arrowPositionY + (ATM_ARROW_BUTTON_HEIGHT - FONT_HEIGHT) / 2, WHITE, TEXT_ALIGN_CENTER)
-
-            // This fills the space between the 2 arrow buttons
-            surface.SetDrawColor(DARK_GREY)
-            surface.DrawRect(leftArrowPositionX + ATM_ARROW_BUTTON_WIDTH, arrowPositionY, rightArrowPositionX - leftArrowPositionX - ATM_ARROW_BUTTON_WIDTH, ATM_ARROW_BUTTON_HEIGHT)
-
-            // This draws the current amount being deposited/withdrawn into the space drawn above
-            draw.DrawText(string.format("$%.2f",self.increment),"HyllestedMoney:MainFont", ATM_UI_WIDTH / 2, arrowPositionY + (ATM_ARROW_BUTTON_HEIGHT - FONT_HEIGHT) / 2, WHITE, TEXT_ALIGN_CENTER)
-
-            // This draws the UI for selected the target for the transfer
-            surface.SetDrawColor(DARK_GREY)
-            surface.DrawRect(targetEntryPositionX, targetEntryPositionY, ATM_UI_WIDTH - ATM_UI_PADDING_X * 2 - ATM_ARROW_BUTTON_WIDTH, ATM_ARROW_BUTTON_HEIGHT)
-
-            draw.DrawText(self.transferTarget, "HyllestedMoney:MainFontSmall", targetEntryPositionX + (ATM_UI_WIDTH - ATM_UI_PADDING_X * 2 - ATM_ARROW_BUTTON_WIDTH) / 2, targetEntryPositionY + (ATM_ARROW_BUTTON_HEIGHT - FONT_HEIGHT_SMALL) / 2, WHITE, TEXT_ALIGN_CENTER)
-
-            // This draws the edit button for the transfer target
-            surface.SetDrawColor(isHoveringTargetEdit and ATM_GREY_BUTTON_COLOR_DARK or ATM_GREY_BUTTON_COLOR)
-            surface.DrawRect(targetEditButtonPositionX, targetEntryPositionY, ATM_ARROW_BUTTON_WIDTH, ATM_ARROW_BUTTON_HEIGHT)
-
-            // This fills said edit button with text
-            draw.DrawText("...","HyllestedMoney:MainFontSmall", targetEditButtonPositionX + ATM_ARROW_BUTTON_WIDTH / 2, targetEntryPositionY + (ATM_ARROW_BUTTON_HEIGHT - FONT_HEIGHT_SMALL) / 2, WHITE, TEXT_ALIGN_CENTER)
-
-            // This draws the transfer button
-            surface.SetDrawColor(isHoveringTransfer and GREEN_DARK or GREEN)
-            surface.DrawRect(transferButtonPositionX, transferButtonPositionY, transferButtonWidth, ATM_TRANSFER_BUTTON_HEIGHT)
-
-            // This draws the text for the transfer button
-            draw.DrawText("Transfer","HyllestedMoney:MainFontSmall", ATM_UI_WIDTH / 2, transferButtonPositionY + (ATM_TRANSFER_BUTTON_HEIGHT - FONT_HEIGHT_SMALL) / 2, WHITE, TEXT_ALIGN_CENTER)
-
-            table.insert(buttons, {x = targetEditButtonPositionX, y = targetEntryPositionY, w = ATM_ARROW_BUTTON_WIDTH, h = ATM_ARROW_BUTTON_HEIGHT, callback = function() self:OpenTransferSelectionMenu() end})
-
-            table.insert(buttons, {x = leftArrowPositionX, y = arrowPositionY, w = ATM_ARROW_BUTTON_WIDTH, h = ATM_ARROW_BUTTON_HEIGHT, callback = function()
-                local increment = input.IsShiftDown() and 10 or 1 -- Hold shift to change increment to 10 instead of 1
-                self.increment = math.max(self.increment - increment, 1) -- Lower limit is 1
-            end})
-
-            table.insert(buttons, {x = rightArrowPositionX, y = arrowPositionY, w = ATM_ARROW_BUTTON_WIDTH, h = ATM_ARROW_BUTTON_HEIGHT, callback = function()
-                local increment = input.IsShiftDown() and 10 or 1 -- Hold shift to change increment to 10 instead of 1
-                self.increment = math.min(self.increment + increment, 2^32) -- Upper limit is set by 32 bit limit
-            end})
-
-            table.insert(buttons, {x = transferButtonPositionX, y = transferButtonPositionY, w = transferButtonWidth, h = ATM_TRANSFER_BUTTON_HEIGHT, callback = function()
-                if self.transferTarget == "" then
-                -- Doesn't used DarkRP method as it is server only
-                    notification.AddLegacy( "No Transfer recipient selected!", NOTIFY_ERROR, 5 )
-                    return
-                end
-
-                self:OpenTransferConfirmMenu()
-            end})
+            self:DrawTransferPage()
         elseif self.page == HISTORY_PAGE then
-            // (title is draw here as well because of the fade out animation when stepping away from the ATM requiring it)
-            draw.DrawText("ATM - MoneyBank™", "HyllestedMoney:MainFont", ATM_UI_WIDTH / 2, ATM_UI_PADDING_Y, WHITE, TEXT_ALIGN_CENTER)
-
-            if self.updateHistory then -- Request updated history page from server
-                net.Start("HyllestedMoney:RequestTransfers")
-                    net.WriteEntity( self )
-                    net.WriteUInt( self.historyPage, 32 ) -- Page number
-                    net.WriteInt( os.time(), 32 ) -- Use for time difference calculations
-                net.SendToServer()
-                self.updateHistory = false
-            end
-
-            draw.DrawText("Amount      -      Account      -      Time", "HyllestedMoney:MainFontSmall", ATM_UI_WIDTH / 2, ATM_UI_PADDING_Y + FONT_HEIGHT, WHITE, TEXT_ALIGN_CENTER)
-            surface.SetDrawColor(WHITE)
-            surface.DrawRect(ATM_UI_PADDING_X, ATM_UI_PADDING_Y + FONT_HEIGHT + FONT_HEIGHT_SMALL, ATM_UI_WIDTH - ATM_UI_PADDING_X * 2, 1)
-
-            for row, data in pairs(self.historyData) do
-                local isNegative = tonumber(data.amount) < 0
-                local amount = (isNegative and "-" or "+") .. string.format("$%d",math.abs(data.amount))
-                draw.DrawText(amount, "HyllestedMoney:MainFontSmall", ATM_UI_PADDING_X, ATM_UI_PADDING_Y + FONT_HEIGHT + (FONT_HEIGHT_SMALL + ATM_LINE_PADDING) * row, isNegative and RED or GREEN, TEXT_ALIGN_LEFT)
-                draw.DrawText(data.toFrom, "HyllestedMoney:MainFontSmall", ATM_UI_WIDTH / 2, ATM_UI_PADDING_Y + FONT_HEIGHT + (FONT_HEIGHT_SMALL + ATM_LINE_PADDING) * row, WHITE, TEXT_ALIGN_CENTER)
-                draw.DrawText(FormatTime(data.timestamp), "HyllestedMoney:MainFontSmall", ATM_UI_WIDTH - ATM_UI_PADDING_X, ATM_UI_PADDING_Y + FONT_HEIGHT + (FONT_HEIGHT_SMALL + ATM_LINE_PADDING) * row, WHITE, TEXT_ALIGN_RIGHT)
-            end
-
-            local leftArrowPositionX = ATM_UI_PADDING_X
-            local rightArrowPositionX = ATM_UI_WIDTH - ATM_UI_PADDING_X - ATM_ARROW_BUTTON_WIDTH
-            local arrowPositionY = ATM_UI_PADDING_Y + FONT_HEIGHT + (FONT_HEIGHT_SMALL + ATM_LINE_PADDING) * (#self.historyData + 1)
-
-            local isHoveringLeftArrow = imgui.IsHovering(leftArrowPositionX, arrowPositionY, ATM_ARROW_BUTTON_WIDTH, ATM_ARROW_BUTTON_HEIGHT)
-            local isHoveringRightArrow = imgui.IsHovering(rightArrowPositionX, arrowPositionY, ATM_ARROW_BUTTON_WIDTH, ATM_ARROW_BUTTON_HEIGHT)
-
-            // This draws the left and right arrow buttons for adjusting amount deposited/withdrawn
-            surface.SetDrawColor(isHoveringLeftArrow and ATM_GREY_BUTTON_COLOR_DARK or ATM_GREY_BUTTON_COLOR)
-            surface.DrawRect(leftArrowPositionX, arrowPositionY, ATM_ARROW_BUTTON_WIDTH, ATM_ARROW_BUTTON_HEIGHT)
-
-            surface.SetDrawColor(isHoveringRightArrow and ATM_GREY_BUTTON_COLOR_DARK or ATM_GREY_BUTTON_COLOR)
-            surface.DrawRect(rightArrowPositionX, arrowPositionY, ATM_ARROW_BUTTON_WIDTH, ATM_ARROW_BUTTON_HEIGHT)
-
-            // This draws the arrows themselves in the buttons drawn above
-            draw.DrawText("<", "HyllestedMoney:MainFont", leftArrowPositionX + ATM_ARROW_BUTTON_WIDTH / 2, arrowPositionY + (ATM_ARROW_BUTTON_HEIGHT - FONT_HEIGHT) / 2, WHITE, TEXT_ALIGN_CENTER)
-            draw.DrawText(">", "HyllestedMoney:MainFont", rightArrowPositionX + ATM_ARROW_BUTTON_WIDTH / 2, arrowPositionY + (ATM_ARROW_BUTTON_HEIGHT - FONT_HEIGHT) / 2, WHITE, TEXT_ALIGN_CENTER)
-
-            // This fills the space between the 2 arrow buttons
-            surface.SetDrawColor(DARK_GREY)
-            surface.DrawRect(leftArrowPositionX + ATM_ARROW_BUTTON_WIDTH, arrowPositionY, rightArrowPositionX - leftArrowPositionX - ATM_ARROW_BUTTON_WIDTH, ATM_ARROW_BUTTON_HEIGHT)
-
-            // This displays the current page number
-            draw.DrawText("Page " .. tostring(self.historyPage + 1), "HyllestedMoney:MainFontSmall", ATM_UI_WIDTH / 2, arrowPositionY + (ATM_ARROW_BUTTON_HEIGHT - FONT_HEIGHT_SMALL) / 2, WHITE, TEXT_ALIGN_CENTER)
-
-            table.insert(buttons, {x = leftArrowPositionX, y = arrowPositionY, w = ATM_ARROW_BUTTON_WIDTH, h = ATM_ARROW_BUTTON_HEIGHT, callback = function()
-                self.historyPage = math.max(self.historyPage - 1, 0)
-                self.updateHistory = true
-            end})
-
-            table.insert(buttons, {x = rightArrowPositionX, y = arrowPositionY, w = ATM_ARROW_BUTTON_WIDTH, h = ATM_ARROW_BUTTON_HEIGHT, callback = function()
-                self.historyPage = math.min(self.historyPage + 1, 2^32)
-                self.updateHistory = true
-            end})
+            self:DrawHistoryPage()
         end
 
         -- Draw back arrow on selected pages
         if self.page == ACCOUNT_PAGE or self.page == TRANSFER_PAGE or self.page == HISTORY_PAGE then
-            local backButtonX = 5
-            local backButtonY = 5
-            local backButtonWidth = 25
-            local backButtonHeight = 25
-
-            local isHoveringBackButton = imgui.IsHovering(backButtonX, backButtonY, backButtonWidth, backButtonHeight)
-
-            surface.SetDrawColor(isHoveringBackButton and ATM_GREY_BUTTON_COLOR_DARK or ATM_GREY_BUTTON_COLOR)
-            surface.DrawRect(backButtonX, backButtonY, backButtonWidth, backButtonHeight)
-            draw.DrawText("<", "HyllestedMoney:MainFontSmall", backButtonX + backButtonWidth / 2, backButtonY + (backButtonHeight - FONT_HEIGHT_SMALL) / 2, WHITE, TEXT_ALIGN_CENTER)
-
-            table.insert(buttons, {x = backButtonX, y = backButtonY, w = backButtonHeight, h = backButtonHeight, callback = function()
-                if not self.pageFadeAnimation.active then
-                    self.pageFadeAnimation.active = true 
-                    self.pageFadeAnimation.startTime = CurTime()
-                    self.pageFadeAnimation.fadeTo = MAIN_PAGE
-                end
-            end})
+            self:DrawBackArrow()
         end
 
         if self.pageFadeAnimation.active then
-            local timePassed = CurTime() - self.pageFadeAnimation.startTime
-            local timeFraction = math.min(timePassed / self.pageFadeAnimation.duration, 1)
-
-            local fadeColor = nil
-            if timeFraction <= 0.5 then -- If we are currently fading out
-                local timeEased = CubicEase(timeFraction*2)
-                fadeColor = TRANSPARENT_ATM_BACKDROP_COLOR:Lerp(ATM_BACKDROP_COLOR, timeEased)
-            else -- If we are current fading in
-                self.page = self.pageFadeAnimation.fadeTo
-
-                local timeEased = CubicEase((timeFraction-0.5)*2)
-                fadeColor = ATM_BACKDROP_COLOR:Lerp(TRANSPARENT_ATM_BACKDROP_COLOR, timeEased)
-
-                local animationEnded = timeFraction == 1
-                if animationEnded then
-                    self.pageFadeAnimation.active = false
-                end
-            end
-            
-            surface.SetDrawColor(fadeColor)
-            surface.DrawRect(0, 0, ATM_UI_WIDTH, ATM_UI_HEIGHT)
+            self:DrawFadeAnimation()
         end
 
-        -- Draw the title here so that the fade animation doesn't affect it
+        -- Draw the title here so that the fade animation doesn't affect it during the startup animation
         if self.active then
             draw.DrawText("ATM - MoneyBank™", "HyllestedMoney:MainFont", ATM_UI_WIDTH / 2, ATM_UI_PADDING_Y, WHITE, TEXT_ALIGN_CENTER)
         end
 
         if imgui.IsPressed() and imgui.IsHovering(0, 0, ATM_UI_WIDTH, ATM_UI_HEIGHT) and distance <= DISTANCE_LIMIT then
-            for _, button in pairs(buttons) do
+            for _, button in pairs(self.buttons) do
                 if imgui.IsHovering(button.x, button.y, button.w, button.h) then
                     self:EmitSound(CLICK_SOUND)
                     button.callback()
@@ -543,9 +570,7 @@ function ENT:DrawTranslucent()
 
         if distance > DISTANCE_LIMIT * 2 then -- Player has moved away
             if not self.pageFadeAnimation.active and self.active then
-                self.pageFadeAnimation.active = true 
-                self.pageFadeAnimation.startTime = CurTime()
-                self.pageFadeAnimation.fadeTo = FRONT_PAGE
+                self:FadeToPage( FRONT_PAGE )
                 self.active = false
             end
         end
@@ -555,6 +580,14 @@ end
 
 function ENT:Draw()
     self:DrawModel()
+end
+
+function ENT:UpdateHistory()
+    net.Start("HyllestedMoney:RequestTransfers")
+        net.WriteEntity( self )
+        net.WriteUInt( self.historyPage, 32 ) -- Page number
+        net.WriteInt( os.time(), 32 ) -- Use for time difference calculations
+    net.SendToServer()
 end
 
 net.Receive("HyllestedMoney:RequestTransfers", function( length )
