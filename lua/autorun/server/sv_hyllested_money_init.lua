@@ -1,6 +1,7 @@
 AddCSLuaFile("autorun/client/cl_hyllested_money_init.lua")
 
 local TABLE_NAME = "HyllestedMoney:PlayerData"
+local TRANSFERS_TABLE_NAME = "HyllestedMoney:Transfers"
 
 local TRANSFER_WITHDRAW = 0
 local TRANSFER_DEPOSIT = 1
@@ -12,7 +13,13 @@ local NOTIFY_ERROR = 1
 -- Create the table if it doesn't exist
 if not sql.TableExists(TABLE_NAME) then
 	sql.Begin()
-		sql.Query("CREATE TABLE `" .. TABLE_NAME .. "`( id int , bank int )")
+		sql.Query("CREATE TABLE `" .. TABLE_NAME .. "`( id int, bank int )")
+	sql.Commit()
+end
+
+if not sql.TableExists(TRANSFERS_TABLE_NAME) then
+	sql.Begin()
+		sql.Query("CREATE TABLE `" .. TABLE_NAME .. "`( toId int, fromId int, amount int, timestamp int )")
 	sql.Commit()
 end
 
@@ -25,6 +32,13 @@ function IdHasEntry( id )
 		return false -- Could be an error OR no data found
 	end
 	return true
+end
+
+function LogTransfer( to, from, amount )
+	local query = string.format("INSERT INTO `%s` ( toId, fromId, amount, timestamp ) VALUES ( %s, %s, %d, %d )", TRANSFERS_TABLE_NAME, tonumber(to), tonumber(from), tonumber(amount), tonumber(os.time()) )
+	sql.Begin()
+		sql.Query(query)
+	sql.Commit()
 end
 
 function SavePlayerData( client )
@@ -103,6 +117,8 @@ net.Receive("HyllestedMoney:PlayerTransferMoney", function(length, client)
 	local transferTarget = net.ReadUInt64()
 	local transferAmount = net.ReadUInt(32)
 
+	local targetSanitized = sql.SQLStr(transferTarget)
+
 	local bankBalance = client:GetNWInt("bankBalance")
 
 	if bankBalance < transferAmount then
@@ -123,7 +139,6 @@ net.Receive("HyllestedMoney:PlayerTransferMoney", function(length, client)
 		DarkRP.notify(client, NOTIFY_GENERIC, 5, string.format("Successfully transfered $%d!", transferAmount))
 		DarkRP.notify(targetClient, NOTIFY_GENERIC, 5, string.format("You received $%d from %s!", transferAmount, client:Name()))
 	else -- There is no player online with that steamid
-		print(transferTarget, client:SteamID64())
 		local playerExists = IdHasEntry(transferTarget) -- Checks whether or not the steamid is in the databse, i.e. have they ever played
 		if not playerExists then -- Don't allow transfers to players that have never played, as it was probably typo
 			DarkRP.notify(client, NOTIFY_ERROR, 5, "No such account Id.")
@@ -133,7 +148,6 @@ net.Receive("HyllestedMoney:PlayerTransferMoney", function(length, client)
 		client:SetNWInt("bankBalance", client:GetNWInt("bankBalance") - transferAmount)
 		SavePlayerData(client)
 
-		local targetSanitized = sql.SQLStr(transferTarget)
 		local targetBalance = sql.Query(string.format("SELECT bank FROM `%s` WHERE id=%q", TABLE_NAME, targetSanitized))
 
 		local query = string.format("UPDATE `%s` SET bank=%d WHERE id=%q", TABLE_NAME, targetBalance + transferAmount, targetSanitized )
@@ -143,4 +157,6 @@ net.Receive("HyllestedMoney:PlayerTransferMoney", function(length, client)
 		sql.Commit()
 		DarkRP.notify(client, NOTIFY_GENERIC, 5, string.format("Successfully transfered $%d!", transferAmount))
 	end
+
+	LogTransfer( targetSanitized, client:SteamID64(), transferAmount)
 end)
