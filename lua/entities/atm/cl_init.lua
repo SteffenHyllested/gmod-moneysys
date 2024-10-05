@@ -38,7 +38,7 @@ local ATM_GREY_BUTTON_COLOR = Color(35, 35, 35, 255)
 local ATM_GREY_BUTTON_COLOR_DARK = Color(30, 30, 30, 255)
 
 local MainFontData = {font = "Arial",size = 36,weight = 1000,}
-local SmallMainFontData = {font = "Arial",size = 20,weight = 1500,}
+local SmallMainFontData = {font = "Arial",size = 18,weight = 1500,}
 surface.CreateFont("HyllestedMoney:MainFont", MainFontData)
 surface.CreateFont("HyllestedMoney:MainFontSmall", SmallMainFontData)
 
