@@ -165,7 +165,7 @@ function ENT:Initialize()
     }
 
     self.historyData = {}
-    self.historyPage = 0
+    self.historyPage = 1
 end
 
 function ENT:AddButton( x, y, w, h, callback )
