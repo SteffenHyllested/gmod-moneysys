@@ -30,6 +30,7 @@ local WHITE = Color(255, 255, 255, 255)
 local TRANSPARENT_WHITE = Color(255, 255, 255, 0)
 local GREEN = Color(100, 200, 125, 255)
 local GREEN_DARK = Color(50, 150, 75, 255)
+local RED = Color(200,100,100)
 local DARK_GREY = Color(25, 25, 25, 255)
 local ATM_BACKDROP_COLOR = Color(50, 50, 50, 255)
 local TRANSPARENT_ATM_BACKDROP_COLOR = Color(50, 50, 50, 0)
@@ -43,8 +44,30 @@ local CLICK_SOUND = Sound("ui/bubble_click.wav")
 
 local DISTANCE_LIMIT = 100
 
-function CubicEase(n)
+local timeDifference = 0
+
+local timeFormats = {
+    [1] = { suffix = "s", denom = 1 },
+    [2] = { suffix = "m", denom = 60 },
+    [3] = { suffix = "h", denom = 360 },
+    [4] = { suffix = "d", denom = 8640 },
+    [5] = { suffix = "m", denom = 259200 },
+    [6] = { suffix = "y", denom = 94608000 },
+}
+
+function CubicEase( n )
     return n^2 * (3 - 2*n)
+end
+
+function FormatTime( timestamp )
+    local timePassed = os.difftime( os.time(), timestamp - timeDifference )
+    local result = tostring(timePassed) .. "s"
+    for _, format in pairs(timeFormats) do
+        local units = math.floor(timePassed / format.denom)
+        if units == 0 then break end
+        result = tostring(units) .. format.suffix
+    end
+    return result .. " ago"
 end
 
 function ENT:OpenTransferSelectionMenu()
@@ -133,6 +156,10 @@ function ENT:Initialize()
         startTime = 0,
         fadeTo = FRONT_PAGE,
     }
+
+    self.updateHistory = false
+    self.historyData = {}
+    self.historyPage = 0
 end
 
 function ENT:DrawTranslucent()
@@ -230,6 +257,7 @@ function ENT:DrawTranslucent()
                     self.pageFadeAnimation.active = true 
                     self.pageFadeAnimation.startTime = CurTime()
                     self.pageFadeAnimation.fadeTo = HISTORY_PAGE
+                    self.updateHistory = true -- Signals that the client should request transfer data next frame
                 end
             end})
         elseif self.page == ACCOUNT_PAGE then
@@ -387,6 +415,62 @@ function ENT:DrawTranslucent()
 
                 self:OpenTransferConfirmMenu()
             end})
+        elseif self.page == HISTORY_PAGE then
+            if self.updateHistory then -- Request updated history page from server
+                net.Start("HyllestedMoney:RequestTransfers")
+                    net.WriteEntity( self )
+                    net.WriteUInt( self.historyPage, 32 ) -- Page number
+                    net.WriteInt( os.time(), 32 ) -- Use for time difference calculations
+                net.SendToServer()
+                self.updateHistory = false
+            end
+
+            draw.DrawText("Amount      -      Account      -      Time", "HyllestedMoney:MainFontSmall", ATM_UI_WIDTH / 2, ATM_UI_PADDING_Y + FONT_HEIGHT, WHITE, TEXT_ALIGN_CENTER)
+            surface.SetDrawColor(WHITE)
+            surface.DrawRect(ATM_UI_PADDING_X, ATM_UI_PADDING_Y + FONT_HEIGHT + FONT_HEIGHT_SMALL, ATM_UI_WIDTH - ATM_UI_PADDING_X * 2, 1)
+
+            for row, data in pairs(self.historyData) do
+                local isNegative = tonumber(data.amount) < 0
+                local amount = (isNegative and "-" or "+") .. string.format("$%d",math.abs(data.amount))
+                draw.DrawText(amount, "HyllestedMoney:MainFontSmall", ATM_UI_PADDING_X, ATM_UI_PADDING_Y + FONT_HEIGHT + (FONT_HEIGHT_SMALL + ATM_LINE_PADDING) * row, isNegative and RED or GREEN, TEXT_ALIGN_LEFT)
+                draw.DrawText(data.toFrom, "HyllestedMoney:MainFontSmall", ATM_UI_WIDTH / 2, ATM_UI_PADDING_Y + FONT_HEIGHT + (FONT_HEIGHT_SMALL + ATM_LINE_PADDING) * row, WHITE, TEXT_ALIGN_CENTER)
+                draw.DrawText(FormatTime(data.timestamp), "HyllestedMoney:MainFontSmall", ATM_UI_WIDTH - ATM_UI_PADDING_X, ATM_UI_PADDING_Y + FONT_HEIGHT + (FONT_HEIGHT_SMALL + ATM_LINE_PADDING) * row, WHITE, TEXT_ALIGN_RIGHT)
+            end
+
+            local leftArrowPositionX = ATM_UI_PADDING_X
+            local rightArrowPositionX = ATM_UI_WIDTH - ATM_UI_PADDING_X - ATM_ARROW_BUTTON_WIDTH
+            local arrowPositionY = ATM_UI_PADDING_Y + FONT_HEIGHT + (FONT_HEIGHT_SMALL + ATM_LINE_PADDING) * (#self.historyData + 1)
+
+            local isHoveringLeftArrow = imgui.IsHovering(leftArrowPositionX, arrowPositionY, ATM_ARROW_BUTTON_WIDTH, ATM_ARROW_BUTTON_HEIGHT)
+            local isHoveringRightArrow = imgui.IsHovering(rightArrowPositionX, arrowPositionY, ATM_ARROW_BUTTON_WIDTH, ATM_ARROW_BUTTON_HEIGHT)
+
+            // This draws the left and right arrow buttons for adjusting amount deposited/withdrawn
+            surface.SetDrawColor(isHoveringLeftArrow and ATM_GREY_BUTTON_COLOR_DARK or ATM_GREY_BUTTON_COLOR)
+            surface.DrawRect(leftArrowPositionX, arrowPositionY, ATM_ARROW_BUTTON_WIDTH, ATM_ARROW_BUTTON_HEIGHT)
+
+            surface.SetDrawColor(isHoveringRightArrow and ATM_GREY_BUTTON_COLOR_DARK or ATM_GREY_BUTTON_COLOR)
+            surface.DrawRect(rightArrowPositionX, arrowPositionY, ATM_ARROW_BUTTON_WIDTH, ATM_ARROW_BUTTON_HEIGHT)
+
+            // This draws the arrows themselves in the buttons drawn above
+            draw.DrawText("<", "HyllestedMoney:MainFont", leftArrowPositionX + ATM_ARROW_BUTTON_WIDTH / 2, arrowPositionY + (ATM_ARROW_BUTTON_HEIGHT - FONT_HEIGHT) / 2, WHITE, TEXT_ALIGN_CENTER)
+            draw.DrawText(">", "HyllestedMoney:MainFont", rightArrowPositionX + ATM_ARROW_BUTTON_WIDTH / 2, arrowPositionY + (ATM_ARROW_BUTTON_HEIGHT - FONT_HEIGHT) / 2, WHITE, TEXT_ALIGN_CENTER)
+
+            // This fills the space between the 2 arrow buttons
+            surface.SetDrawColor(DARK_GREY)
+            surface.DrawRect(leftArrowPositionX + ATM_ARROW_BUTTON_WIDTH, arrowPositionY, rightArrowPositionX - leftArrowPositionX - ATM_ARROW_BUTTON_WIDTH, ATM_ARROW_BUTTON_HEIGHT)
+
+            // This displays the current page number
+            draw.DrawText("Page " .. tostring(self.historyPage + 1), "HyllestedMoney:MainFontSmall", ATM_UI_WIDTH / 2, arrowPositionY + (ATM_ARROW_BUTTON_HEIGHT - FONT_HEIGHT_SMALL) / 2, WHITE, TEXT_ALIGN_CENTER)
+
+            table.insert(buttons, {x = leftArrowPositionX, y = arrowPositionY, w = ATM_ARROW_BUTTON_WIDTH, h = ATM_ARROW_BUTTON_HEIGHT, callback = function()
+                self.historyPage = math.max(self.historyPage - 1, 0)
+                self.updateHistory = true
+            end})
+
+            table.insert(buttons, {x = rightArrowPositionX, y = arrowPositionY, w = ATM_ARROW_BUTTON_WIDTH, h = ATM_ARROW_BUTTON_HEIGHT, callback = function()
+                self.historyPage = math.min(self.historyPage + 1, 2^32)
+                self.updateHistory = true
+            end})
         end
 
         -- Draw back arrow on selected pages
@@ -464,3 +548,10 @@ end
 function ENT:Draw()
     self:DrawModel()
 end
+
+net.Receive("HyllestedMoney:RequestTransfers", function( length )
+    local entity = net.ReadEntity()
+    if not entity then return end
+    entity.historyData = net.ReadTable( true )
+    timeDifference = net.ReadInt( 32 )
+end)

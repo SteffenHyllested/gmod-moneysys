@@ -10,6 +10,12 @@ local TRANSFER_DEPOSIT = 1
 local NOTIFY_GENERIC = 0
 local NOTIFY_ERROR = 1
 
+local HISTORY_PAGE_SIZE = 4
+
+local RATE_LIMIT = 3 -- How often the player can transfer money in seconds
+
+local lastTransfer = {} -- Used for tracking when the player last did a transfer, to add a rate limit
+
 -- Create the table if it doesn't exist
 if not sql.TableExists(TABLE_NAME) then
 	sql.Begin()
@@ -19,7 +25,7 @@ end
 
 if not sql.TableExists(TRANSFERS_TABLE_NAME) then
 	sql.Begin()
-		sql.Query("CREATE TABLE `" .. TABLE_NAME .. "`( toId int, fromId int, amount int, timestamp int )")
+		sql.Query("CREATE TABLE `" .. TRANSFERS_TABLE_NAME .. "`( toId int, fromId int, amount int, timestamp int )")
 	sql.Commit()
 end
 
@@ -35,10 +41,52 @@ function IdHasEntry( id )
 end
 
 function LogTransfer( to, from, amount )
-	local query = string.format("INSERT INTO `%s` ( toId, fromId, amount, timestamp ) VALUES ( %s, %s, %d, %d )", TRANSFERS_TABLE_NAME, tonumber(to), tonumber(from), tonumber(amount), tonumber(os.time()) )
+	local query = string.format("INSERT INTO `%s` ( toId, fromId, amount, timestamp ) VALUES ( %s, %s, %d, %d )", TRANSFERS_TABLE_NAME, to, from, amount, os.time() )
 	sql.Begin()
-		sql.Query(query)
+		local s = sql.Query(query)
 	sql.Commit()
+end
+
+function FetchTransfers( id, page )
+	local query = string.format("SELECT * FROM `%s` WHERE (toId=%s OR fromId=%s) ORDER BY timestamp DESC", TRANSFERS_TABLE_NAME, id, id)
+	local result = sql.Query(query)
+
+	local data = {}
+	if not result then return data end
+
+	local skipped = 0
+
+	for i, transfer in pairs(result) do
+		if tostring(transfer.toId) == id then
+			if skipped >= page * HISTORY_PAGE_SIZE then
+				table.insert(data,{
+					amount = transfer.amount,
+					toFrom = transfer.fromId,
+					timestamp = transfer.timestamp,
+				})
+			else
+				skipped = skipped + 1
+			end
+		end
+
+		if #data >= HISTORY_PAGE_SIZE then break end
+
+		if tostring(transfer.fromId) == id then
+			if skipped >= page * HISTORY_PAGE_SIZE then
+				table.insert(data,{
+					amount = -transfer.amount,
+					toFrom = transfer.toId,
+					timestamp = transfer.timestamp,
+				})
+			else
+				skipped = skipped + 1
+			end
+		end
+
+		if #data >= HISTORY_PAGE_SIZE then break end
+	end
+
+	return data
 end
 
 function SavePlayerData( client )
@@ -78,6 +126,7 @@ end)
 
 util.AddNetworkString("HyllestedMoney:TransferMoney") -- Transfering funds to/from bank/wallet
 util.AddNetworkString("HyllestedMoney:PlayerTransferMoney") -- Transfering funds between players
+util.AddNetworkString("HyllestedMoney:RequestTransfers") -- Replicating transfer data to client
 
 net.Receive("HyllestedMoney:TransferMoney",function(length,client)
 	local transferType = net.ReadUInt(1)
@@ -127,6 +176,13 @@ net.Receive("HyllestedMoney:PlayerTransferMoney", function(length, client)
 	end
 	
 	-- NOTE: Add a rate limit here so that players can not spam this.
+
+	if CurTime() - (lastTransfer[client:SteamID64()] or 0) < RATE_LIMIT then
+		DarkRP.notify(client, NOTIFY_ERROR, 5, "Slow down! You're doing that too fast.")
+		return
+	end
+	lastTransfer[client:SteamID64()] = CurTime()
+
 	-- We must behave dependently on whether the target player is currently online
 	local targetClient = player.GetBySteamID64(transferTarget)
 	if targetClient then -- The player is online
@@ -159,4 +215,18 @@ net.Receive("HyllestedMoney:PlayerTransferMoney", function(length, client)
 	end
 
 	LogTransfer( targetSanitized, client:SteamID64(), transferAmount)
+end)
+
+net.Receive("HyllestedMoney:RequestTransfers", function( length, client )
+	local entity = net.ReadEntity()
+	local pageNumber = net.ReadUInt( 32 )
+	local clientTime = net.ReadInt( 32 )
+
+	local data = FetchTransfers( client:SteamID64(), pageNumber )
+
+	net.Start( "HyllestedMoney:RequestTransfers" )
+		net.WriteEntity( entity )
+		net.WriteTable( data, true )
+		net.WriteInt( os.difftime(os.time(), clientTime), 32 )
+	net.Send( client )
 end)
