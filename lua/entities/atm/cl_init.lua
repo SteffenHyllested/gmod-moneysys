@@ -55,9 +55,9 @@ local timeFormats = {
     [1] = { suffix = "s", denom = 1 },
     [2] = { suffix = "m", denom = 60 },
     [3] = { suffix = "h", denom = 3600 },
-    [4] = { suffix = "d", denom = 8640 },
-    [5] = { suffix = "m", denom = 259200 },
-    [6] = { suffix = "y", denom = 94608000 },
+    [4] = { suffix = "d", denom = 86400 },
+    [5] = { suffix = "m", denom = 2592000 },
+    [6] = { suffix = "y", denom = 31536000 },
 }
 
 function CubicEase( n )
