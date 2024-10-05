@@ -416,6 +416,9 @@ function ENT:DrawTranslucent()
                 self:OpenTransferConfirmMenu()
             end})
         elseif self.page == HISTORY_PAGE then
+            // (title is draw here as well because of the fade out animation when stepping away from the ATM requiring it)
+            draw.DrawText("ATM - MoneyBank™", "HyllestedMoney:MainFont", ATM_UI_WIDTH / 2, ATM_UI_PADDING_Y, WHITE, TEXT_ALIGN_CENTER)
+
             if self.updateHistory then -- Request updated history page from server
                 net.Start("HyllestedMoney:RequestTransfers")
                     net.WriteEntity( self )
