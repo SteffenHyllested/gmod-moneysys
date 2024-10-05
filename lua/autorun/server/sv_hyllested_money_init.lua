@@ -1,3 +1,5 @@
+AddCSLuaFile("autorun/client/cl_hyllested_money_init.lua")
+
 local TABLE_NAME = "HyllestedMoney:PlayerData"
 
 local TRANSFER_WITHDRAW = 0
@@ -119,6 +121,7 @@ net.Receive("HyllestedMoney:PlayerTransferMoney", function(length, client)
 		SavePlayerData(targetClient)
 
 		DarkRP.notify(client, NOTIFY_GENERIC, 5, string.format("Successfully transfered $%d!", transferAmount))
+		DarkRP.notify(targetClient, NOTIFY_GENERIC, 5, string.format("You received $%d from %s!", transferAmount, client:Name()))
 	else -- There is no player online with that steamid
 		print(transferTarget, client:SteamID64())
 		local playerExists = IdHasEntry(transferTarget) -- Checks whether or not the steamid is in the databse, i.e. have they ever played
