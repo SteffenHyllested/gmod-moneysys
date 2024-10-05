@@ -49,7 +49,7 @@ local timeDifference = 0
 local timeFormats = {
     [1] = { suffix = "s", denom = 1 },
     [2] = { suffix = "m", denom = 60 },
-    [3] = { suffix = "h", denom = 360 },
+    [3] = { suffix = "h", denom = 3600 },
     [4] = { suffix = "d", denom = 8640 },
     [5] = { suffix = "m", denom = 259200 },
     [6] = { suffix = "y", denom = 94608000 },
@@ -62,7 +62,7 @@ end
 function FormatTime( timestamp )
     local timePassed = os.difftime( os.time(), timestamp - timeDifference )
     local result = tostring(timePassed) .. "s"
-    for _, format in pairs(timeFormats) do
+    for _, format in ipairs(timeFormats) do
         local units = math.floor(timePassed / format.denom)
         if units == 0 then break end
         result = tostring(units) .. format.suffix
